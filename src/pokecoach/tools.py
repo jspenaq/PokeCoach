@@ -157,11 +157,28 @@ def _start_play_bundle(
         window={
             "start_line": turn_span.start_line,
             "end_line": turn_span.end_line,
-            "raw_lines": [f"Turn window {turn_span.start_line}-{turn_span.end_line}"],
+            "raw_lines": [f"Turno {turn_span.turn_number}"],
         },
         gust_event=gust_event,
         action_event=action_event,
     )
+
+
+def _build_play_bundle_window_raw_lines(
+    gust_event: PlayBundleEvent | None,
+    action_event: PlayBundleEvent | None,
+    ko_events: list[PlayBundleEvent],
+    prize_events: list[PlayBundleEvent],
+) -> list[str]:
+    evidence_events: list[PlayBundleEvent] = []
+    if gust_event is not None:
+        evidence_events.append(gust_event)
+    if action_event is not None:
+        evidence_events.append(action_event)
+    evidence_events.extend(ko_events)
+    evidence_events.extend(prize_events)
+    ordered_events = sorted(evidence_events, key=lambda event: event.line)
+    return [event.text for event in ordered_events]
 
 
 def _parse_prize_count(prize_text: str) -> int:
@@ -260,6 +277,12 @@ def extract_play_bundles(log_text: str) -> list[PlayBundle]:
         )
         bundle.ko_events = ko_events
         bundle.prize_events = prize_events
+        bundle.window.raw_lines = _build_play_bundle_window_raw_lines(
+            gust_event=bundle.gust_event,
+            action_event=bundle.action_event,
+            ko_events=bundle.ko_events,
+            prize_events=bundle.prize_events,
+        )
         if bundle.gust_event or bundle.action_event or bundle.ko_events or bundle.prize_events:
             bundles.append(bundle)
 
