@@ -30,25 +30,25 @@ from pokecoach.constants import (
 from pokecoach.factories import build_evidence_span
 from pokecoach.guardrails import apply_report_guardrails
 from pokecoach.llm_provider import maybe_generate_guidance
-from pokecoach.schemas import Mistake, PostGameReport, TurningPoint
-from pokecoach.tools import compute_basic_stats, extract_match_facts, find_key_events, index_turns
+from pokecoach.schemas import MatchFacts, Mistake, PostGameReport, TurningPoint
+from pokecoach.tools import extract_match_facts, find_key_events, index_turns
 
 
-def _summary_from_context(log_text: str) -> list[str]:
-    stats = compute_basic_stats(log_text)
+def _summary_from_context(log_text: str, match_facts: MatchFacts) -> list[str]:
     events = find_key_events(log_text).events
 
     summary: list[str] = []
-    if stats.went_first_player:
-        summary.append(f"{stats.went_first_player} took the first turn.")
+    if match_facts.went_first_player:
+        summary.append(f"{match_facts.went_first_player} took the first turn.")
 
-    ko_count = sum(1 for event in events if event.event_type == "KO")
-    prize_count = sum(1 for event in events if event.event_type == "PRIZE_TAKEN")
+    ko_count = sum(match_facts.kos_by_player.values())
+    prize_count = sum(match_facts.observable_prizes_taken_by_player.values())
     attack_count = sum(1 for event in events if event.event_type == "ATTACK")
 
     summary.append(f"Observed {attack_count} attack events in the log.")
     summary.append(f"Observed {ko_count} knockout events.")
-    summary.append(f"Observed {prize_count} prize-taking events.")
+    summary.append(f"Observed {prize_count} observable prize cards taken.")
+    summary.append(f"Observed {match_facts.turns_count} turns in the log.")
     summary.append("Momentum swings were driven by attack-to-KO sequences.")
     summary.append("Unknown hidden information may change optimal lines.")
 
@@ -128,7 +128,7 @@ def _build_mistakes(log_text: str) -> list[Mistake]:
 def generate_post_game_report(log_text: str) -> PostGameReport:
     turns = index_turns(log_text)
     match_facts = extract_match_facts(log_text)
-    summary = _summary_from_context(log_text)
+    summary = _summary_from_context(log_text, match_facts)
 
     if len(summary) < 5:
         summary.extend(FALLBACK_SUMMARY_ITEMS)

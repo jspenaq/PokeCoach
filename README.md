@@ -70,6 +70,16 @@ report = generate_post_game_report(log_text)
 print(report.model_dump_json(indent=2))
 ```
 
+`PostGameReport` includes `match_facts`, a deterministic snapshot of observable outcomes:
+- `winner`
+- `went_first_player`
+- `turns_count`
+- `observable_prizes_taken_by_player`
+- `kos_by_player`
+- `concede`
+
+These facts are rendered in CLI Markdown as a scoreboard section and are kept consistent with summary fact lines in deterministic mode.
+
 ## CLI Usage
 
 Generate report to stdout (JSON default):
@@ -82,6 +92,26 @@ Generate Markdown to stdout:
 
 ```bash
 uv run python run_report.py logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt --format md
+```
+
+Example Markdown snippet:
+
+```md
+## Match Facts
+
+| Fact | Value |
+| --- | --- |
+| Winner | Kami-Yan |
+| Went first | XueDii |
+| Turns | 12 |
+| Concede detected | Yes |
+
+### Scoreboard
+
+| Player | Observable Prizes | KOs |
+| --- | ---: | ---: |
+| Kami-Yan | 6 | 4 |
+| XueDii | 4 | 3 |
 ```
 
 Write output to file:

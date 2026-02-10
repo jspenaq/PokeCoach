@@ -67,8 +67,41 @@ def _read_log_text(log_path: str) -> str:
 
 
 def _render_markdown(report: PostGameReport) -> str:
+    def _bool_label(flag: bool) -> str:
+        return "Yes" if flag else "No"
+
+    def _optional_value(value: str | None) -> str:
+        return value if value else "-"
+
+    def _scoreboard_rows() -> list[tuple[str, str, str]]:
+        facts = report.match_facts
+        players = sorted(set(facts.observable_prizes_taken_by_player) | set(facts.kos_by_player))
+        if not players:
+            return [("-", "0", "0")]
+        return [
+            (
+                player,
+                str(facts.observable_prizes_taken_by_player.get(player, 0)),
+                str(facts.kos_by_player.get(player, 0)),
+            )
+            for player in players
+        ]
+
     lines: list[str] = []
     lines.extend(["# Post-Game Report", ""])
+    lines.extend(["## Match Facts", ""])
+    lines.append("| Fact | Value |")
+    lines.append("| --- | --- |")
+    lines.append(f"| Winner | {_optional_value(report.match_facts.winner)} |")
+    lines.append(f"| Went first | {_optional_value(report.match_facts.went_first_player)} |")
+    lines.append(f"| Turns | {report.match_facts.turns_count} |")
+    lines.append(f"| Concede detected | {_bool_label(report.match_facts.concede)} |")
+    lines.extend(["", "### Scoreboard", ""])
+    lines.append("| Player | Observable Prizes | KOs |")
+    lines.append("| --- | ---: | ---: |")
+    for player, prizes, kos in _scoreboard_rows():
+        lines.append(f"| {player} | {prizes} | {kos} |")
+    lines.append("")
     lines.extend(["## Summary", ""])
     lines.extend(f"- {item}" for item in report.summary)
     lines.extend(["", "## Turning Points", ""])

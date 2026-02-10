@@ -42,6 +42,8 @@ def test_cli_format_md_writes_markdown_to_stdout() -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.startswith("# Post-Game Report")
+    assert "## Match Facts" in completed.stdout
+    assert "| Player | Observable Prizes | KOs |" in completed.stdout
     assert "## Summary" in completed.stdout
     assert completed.stderr == ""
 
