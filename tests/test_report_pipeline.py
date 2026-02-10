@@ -144,3 +144,50 @@ def test_summary_integrity_moves_unverifiable_ko_claim_to_unknowns(monkeypatch) 
         item.startswith("Unverifiable KO summary claim omitted: Mega-Lopunny ex KO MissingTarget ex.")
         for item in report.unknowns
     )
+
+
+def test_turning_points_rank_by_impact_score_not_order(monkeypatch) -> None:
+    log_text = "\n".join(
+        [
+            "Turno de [playerName]",
+            "Alice usó Golpe Ligero.",
+            "¡El (sv1_25) Pikachu de Bob quedó Fuera de Combate!",
+            "Alice tomó una carta de Premio.",
+            "Turno de [playerName]",
+            "Bob usó Ataque Final.",
+            "¡El (sv8_220) Latias ex de Alice quedó Fuera de Combate!",
+            "Bob tomó 2 cartas de Premio.",
+        ]
+    )
+    monkeypatch.setattr(report_module, "maybe_generate_guidance", lambda **_kwargs: None)
+
+    report = generate_post_game_report(log_text)
+
+    assert "Latias ex" in " ".join(report.turning_points[0].evidence.raw_lines)
+    assert "tomó 2 cartas de Premio." in " ".join(report.turning_points[0].evidence.raw_lines)
+
+
+def test_turning_points_log7_include_required_two_prize_ko_targets(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(report_module, "maybe_generate_guidance", lambda **_kwargs: None)
+
+    report = generate_post_game_report(log_text)
+
+    assert any(
+        "Latias ex" in " ".join(tp.evidence.raw_lines) and "tomó 2 cartas de Premio." in " ".join(tp.evidence.raw_lines)
+        for tp in report.turning_points
+    )
+    assert any(
+        "Fezandipiti ex" in " ".join(tp.evidence.raw_lines)
+        and "tomó 2 cartas de Premio." in " ".join(tp.evidence.raw_lines)
+        for tp in report.turning_points
+    )
+
+
+def test_turning_points_include_endgame_concede_when_present(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(report_module, "maybe_generate_guidance", lambda **_kwargs: None)
+
+    report = generate_post_game_report(log_text)
+
+    assert any(tp.title == "Concede closes endgame" for tp in report.turning_points)
