@@ -41,11 +41,9 @@ class KeyEventIndex(BaseModel):
 
 
 class MatchStats(BaseModel):
-    went_first: str | None = None
-    mulligans_self: int | None = None
-    mulligans_opponent: int | None = None
-    observable_prizes_taken_self: int | None = None
-    observable_prizes_taken_opponent: int | None = None
+    went_first_player: str | None = None
+    mulligans_by_player: dict[str, int] = Field(default_factory=dict)
+    observable_prizes_taken_by_player: dict[str, int] = Field(default_factory=dict)
 
 
 class TurnSummary(BaseModel):

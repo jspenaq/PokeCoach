@@ -88,4 +88,49 @@ def extract_turn_summary(turn_span: TurnSpan, log_text: str) -> TurnSummary:
 
 
 def compute_basic_stats(log_text: str) -> MatchStats:
-    raise NotImplementedError
+    lines = log_text.splitlines()
+
+    players: list[str] = []
+    for raw in lines:
+        match = re.match(r"^([A-Za-z0-9_\-]+) robó 7 cartas de la mano inicial\.", raw.strip())
+        if match and match.group(1) not in players:
+            players.append(match.group(1))
+
+    went_first_player: str | None = None
+    mulligans_by_player: dict[str, int] = {}
+    prizes_by_player: dict[str, int] = {}
+
+    for raw in lines:
+        text = raw.strip()
+
+        first_match = re.match(r"^([A-Za-z0-9_\-]+) decidió empezar en (primer|segundo) lugar\.", text)
+        if first_match:
+            actor = first_match.group(1)
+            choice = first_match.group(2)
+            if choice == "primer":
+                went_first_player = actor
+            elif len(players) == 2:
+                went_first_player = players[0] if players[1] == actor else players[1]
+
+        one_mulligan = re.match(r"^([A-Za-z0-9_\-]+) declaró un mulligan\.", text)
+        if one_mulligan:
+            actor = one_mulligan.group(1)
+            mulligans_by_player[actor] = mulligans_by_player.get(actor, 0) + 1
+
+        many_mulligan = re.match(r"^([A-Za-z0-9_\-]+) declaró (\d+) mulligans\.", text)
+        if many_mulligan:
+            actor = many_mulligan.group(1)
+            mulligans_by_player[actor] = mulligans_by_player.get(actor, 0) + int(many_mulligan.group(2))
+
+        prize_match = re.match(r"^([A-Za-z0-9_\-]+) tomó (una|\d+) cartas? de Premio\.", text)
+        if prize_match:
+            actor = prize_match.group(1)
+            count_text = prize_match.group(2)
+            count = 1 if count_text == "una" else int(count_text)
+            prizes_by_player[actor] = prizes_by_player.get(actor, 0) + count
+
+    return MatchStats(
+        went_first_player=went_first_player,
+        mulligans_by_player=mulligans_by_player,
+        observable_prizes_taken_by_player=prizes_by_player,
+    )
