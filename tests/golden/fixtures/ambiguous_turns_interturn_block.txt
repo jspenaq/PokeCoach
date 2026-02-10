@@ -1,0 +1,7 @@
+Turno de [playerName]
+[Chequeo Pokémon]
+- Se aplicó daño entre turnos.
+[Fin del chequeo]
+Turno de [playerName]
+Kami-Yan jugó (me1_119) Determinación de Lillie.
+Kami-Yan infligió 180 puntos de daño usando Comodín Nocturno contra X. ¡X quedó Fuera de Combate! Kami-Yan tomó una carta de Premio.
