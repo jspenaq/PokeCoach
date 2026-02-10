@@ -6,8 +6,8 @@ import pytest
 from pokecoach import report as report_module
 from pokecoach.llm_provider import LLMReportGuidance
 from pokecoach.report import generate_post_game_report
-from pokecoach.schemas import EvidenceSpan, Mistake, TurningPoint
-from pokecoach.tools import extract_turn_summary, index_turns
+from pokecoach.schemas import EvidenceSpan, Mistake, PlayBundle, PlayBundleEvent, TurningPoint
+from pokecoach.tools import extract_play_bundles, extract_turn_summary, index_turns
 
 ENGLISH_MARKERS_RE = re.compile(
     r"\b("
@@ -256,6 +256,81 @@ def test_turning_points_rank_by_impact_score_not_order(monkeypatch) -> None:
 
     assert "Latias ex" in " ".join(report.turning_points[0].evidence.raw_lines)
     assert "tomó 2 cartas de Premio." in " ".join(report.turning_points[0].evidence.raw_lines)
+
+
+def _bundle_event(line: int, text: str) -> PlayBundleEvent:
+    return PlayBundleEvent(
+        line=line,
+        text=text,
+        evidence=EvidenceSpan(start_line=line, end_line=line, raw_lines=[text]),
+    )
+
+
+def test_bundle_turning_point_prize_trade_1_to_1_has_no_two_prize_swing_bonus() -> None:
+    ko_text = "¡El (sv1_25) Pikachu de Bob quedó Fuera de Combate!"
+    bundle = PlayBundle(
+        turn_number=1,
+        actor="Alice",
+        window=EvidenceSpan(start_line=1, end_line=4, raw_lines=[ko_text]),
+        ko_events=[_bundle_event(2, ko_text)],
+        prize_events=[
+            _bundle_event(3, "Alice tomó una carta de Premio."),
+            _bundle_event(4, "Bob tomó una carta de Premio."),
+        ],
+    )
+
+    candidate = report_module._build_bundle_turning_point(bundle, spanish_mode=True)
+
+    assert candidate is not None
+    score, _, turning_point = candidate
+    assert score == report_module.IMPACT_KO_BASE
+    assert "Bono por swing de 2 Premios" not in turning_point.impact
+
+
+def test_bundle_turning_point_true_two_prize_swing_gets_bonus() -> None:
+    ko_text = "¡El (sv8_220) Latias ex de Bob quedó Fuera de Combate!"
+    bundle = PlayBundle(
+        turn_number=1,
+        actor="Alice",
+        window=EvidenceSpan(start_line=1, end_line=3, raw_lines=[ko_text]),
+        ko_events=[_bundle_event(2, ko_text)],
+        prize_events=[_bundle_event(3, "Alice tomó 2 cartas de Premio.")],
+    )
+
+    candidate = report_module._build_bundle_turning_point(bundle, spanish_mode=True)
+
+    assert candidate is not None
+    score, _, turning_point = candidate
+    assert score == (
+        report_module.IMPACT_KO_BASE
+        + report_module.IMPACT_TWO_PRIZE_SWING_BONUS
+        + report_module.IMPACT_HIGH_IMPACT_TARGET_BONUS
+    )
+    assert "Bono por swing de 2 Premios" in turning_point.impact
+
+
+def test_log7_kirlia_trade_bundle_has_no_two_prize_swing_bonus() -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt").read_text(encoding="utf-8")
+    bundles = extract_play_bundles(log_text)
+    kirlia_trade_bundle = next(
+        (
+            bundle
+            for bundle in bundles
+            if bundle.actor == "Kami-Yan"
+            and any("Kirlia de SpicyTaco30" in event.text for event in bundle.ko_events)
+            and any("Dusknoir de Kami-Yan" in event.text for event in bundle.ko_events)
+            and any(event.text.startswith("SpicyTaco30 tomó una carta de Premio.") for event in bundle.prize_events)
+            and any(event.text.startswith("Kami-Yan tomó una carta de Premio.") for event in bundle.prize_events)
+        ),
+        None,
+    )
+
+    assert kirlia_trade_bundle is not None
+    candidate = report_module._build_bundle_turning_point(kirlia_trade_bundle, spanish_mode=True)
+    assert candidate is not None
+    score, _, turning_point = candidate
+    assert score == report_module.IMPACT_KO_BASE
+    assert "Bono por swing de 2 Premios" not in turning_point.impact
 
 
 def test_turning_points_log7_include_required_two_prize_ko_targets(monkeypatch) -> None:

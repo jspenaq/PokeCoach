@@ -40,6 +40,7 @@ IMPACT_TWO_PRIZE_SWING_BONUS = 35
 IMPACT_HIGH_IMPACT_TARGET_BONUS = 20
 IMPACT_CONCEDE_ENDGAME_SCORE = 130
 PRIZE_COUNT_RE = re.compile(r"tomó (una|\d+) cartas? de Premio\.", re.IGNORECASE)
+PRIZE_ACTOR_RE = re.compile(r"^([A-Za-z0-9_\-]+)\s+tomó\s+(?:una|\d+)\s+cartas?\s+de\s+Premio\.$", re.IGNORECASE)
 HIGH_IMPACT_TARGET_RE = re.compile(r"\bex\b", re.IGNORECASE)
 KO_TARGET_RE = re.compile(
     r"^\s*[¡!]?\s*El\s+\([^)]+\)\s+(.+?)\s+de\s+[A-Za-z0-9_\-]+\s+quedó Fuera de Combate[.!¡!]*\s*$"
@@ -124,6 +125,13 @@ def _extract_ko_target(ko_text: str) -> str:
     return match.group(1)
 
 
+def _extract_prize_actor(prize_text: str) -> str | None:
+    match = PRIZE_ACTOR_RE.match(prize_text.strip())
+    if not match:
+        return None
+    return match.group(1)
+
+
 def _build_bundle_turning_point(bundle, spanish_mode: bool) -> tuple[int, int, TurningPoint] | None:
     if not bundle.ko_events:
         return None
@@ -139,8 +147,17 @@ def _build_bundle_turning_point(bundle, spanish_mode: bool) -> tuple[int, int, T
         return None
 
     score = IMPACT_KO_BASE
-    total_prizes = sum(_extract_prize_count(event.text) for event in bundle.prize_events)
-    has_two_prize_swing = total_prizes >= 2
+    actor_prizes = 0
+    opponent_prizes = 0
+    for event in bundle.prize_events:
+        prize_count = _extract_prize_count(event.text)
+        prize_actor = _extract_prize_actor(event.text)
+        if prize_actor == bundle.actor:
+            actor_prizes += prize_count
+        else:
+            opponent_prizes += prize_count
+    prize_swing = actor_prizes - opponent_prizes
+    has_two_prize_swing = prize_swing >= 2
     has_high_impact_target = any(HIGH_IMPACT_TARGET_RE.search(event.text) for event in bundle.ko_events)
 
     if has_two_prize_swing:
