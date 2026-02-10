@@ -22,6 +22,7 @@ def apply_summary_claim_integrity(
     unknowns: list[str],
     fallback_summary: list[str],
     log_text: str,
+    spanish_mode: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Validate summary bullets and rewrite/drop unverifiable KO attribution claims."""
     lines = log_text.splitlines()
@@ -41,10 +42,16 @@ def apply_summary_claim_integrity(
             normalized_summary.append(bullet)
             continue
         if verification == "target_only":
-            normalized_summary.append(f"Observed knockout: {target} was knocked out.")
+            if spanish_mode:
+                normalized_summary.append(f"Fuera de Combate observado: {target} quedó Fuera de Combate.")
+            else:
+                normalized_summary.append(f"Observed knockout: {target} was knocked out.")
             continue
 
-        unknown = f"Unverifiable KO summary claim omitted: {bullet}"
+        if spanish_mode:
+            unknown = f"Afirmación de KO no verificable omitida del resumen: {bullet}"
+        else:
+            unknown = f"Unverifiable KO summary claim omitted: {bullet}"
         if unknown not in unknown_seen:
             normalized_unknowns.append(unknown)
             unknown_seen.add(unknown)

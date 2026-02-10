@@ -50,12 +50,12 @@ def test_guardrails_remove_items_without_evidence(monkeypatch) -> None:
     monkeypatch.setattr(
         report,
         "_build_turning_points",
-        lambda _log: [_tp("TP1", 0.8, 1), _tp("TP2", 0.8, 2), bad_tp],
+        lambda _log, _spanish_mode: [_tp("TP1", 0.8, 1), _tp("TP2", 0.8, 2), bad_tp],
     )
     monkeypatch.setattr(
         report,
         "_build_mistakes",
-        lambda _log: [
+        lambda _log, _spanish_mode: [
             _mistake("M1", 0.7, 1),
             _mistake("M2", 0.7, 2),
             _mistake("M3", 0.7, 3),
@@ -75,7 +75,7 @@ def test_guardrails_reroute_low_confidence_claims_to_unknowns(monkeypatch) -> No
     monkeypatch.setattr(
         report,
         "_build_turning_points",
-        lambda _log: [
+        lambda _log, _spanish_mode: [
             _tp("Solid TP1", 0.8, 1),
             _tp("Solid TP2", 0.8, 2),
             _tp("Duplicate low TP", 0.4, 3),
@@ -85,7 +85,7 @@ def test_guardrails_reroute_low_confidence_claims_to_unknowns(monkeypatch) -> No
     monkeypatch.setattr(
         report,
         "_build_mistakes",
-        lambda _log: [
+        lambda _log, _spanish_mode: [
             _mistake("Solid M1", 0.8, 1),
             _mistake("Solid M2", 0.8, 2),
             _mistake("Solid M3", 0.8, 3),
@@ -105,8 +105,8 @@ def test_guardrails_reroute_low_confidence_claims_to_unknowns(monkeypatch) -> No
 
 
 def test_guardrails_backfill_minimum_cardinality_from_events(monkeypatch) -> None:
-    monkeypatch.setattr(report, "_build_turning_points", lambda _log: [_tp("Low TP", 0.4, 1)])
-    monkeypatch.setattr(report, "_build_mistakes", lambda _log: [_mistake("Low M", 0.4, 1)])
+    monkeypatch.setattr(report, "_build_turning_points", lambda _log, _spanish_mode: [_tp("Low TP", 0.4, 1)])
+    monkeypatch.setattr(report, "_build_mistakes", lambda _log, _spanish_mode: [_mistake("Low M", 0.4, 1)])
     monkeypatch.setattr(
         report,
         "find_key_events",
