@@ -2,97 +2,120 @@
 
 ## Project Overview
 
-**PokeCoach** is an evidence-based, tool-driven agentic AI system that converts noisy battle logs from Pokémon Trading Card Game Live into actionable coaching reports.
+**PokeCoach** is an evidence-first post-game coach for Pokémon TCG Live.
 
-The system parses Spanish-language battle logs (with or without card IDs) and generates a typed `PostGameReport` (Pydantic) containing:
-- Match summary and turning points
-- Potential misplays with confidence scoring
-- Explicit unknowns (hidden information like hand, prizes, opponent deck)
-- Actionable next steps for improvement
+Current implementation status:
+- Typed contracts in `src/pokecoach/schemas.py`.
+- Deterministic tools in `src/pokecoach/tools.py`:
+  - `index_turns(log_text) -> list[TurnSpan]`
+  - `find_key_events(log_text) -> KeyEventIndex`
+  - `compute_basic_stats(log_text) -> MatchStats`
+  - `extract_turn_summary(turn_span, log_text) -> TurnSummary`
+- Initial report assembly in `src/pokecoach/report.py`:
+  - `generate_post_game_report(log_text) -> PostGameReport`
+- Spec contract in `docs/spec_v1.md`.
+- Sample logs in `logs_prueba/` (Spanish, with and without card IDs).
 
-**Core principles:**
-- **Anti-hallucination design**: Every claim requires an `EvidenceSpan` (line ranges from the log). No evidence = no claim.
-- **Tool-driven architecture**: Deterministic parsing tools (regex + lightweight state machine) extract turns, key events (KOs, prizes, attacks, supporters/stadiums), and stats. The agent composes these outputs into reports.
-- **Fail-open behavior**: Unparsed segments are preserved as RAW evidence to maintain robustness across log format variations.
-- **Uncertainty as a feature**: Hidden information is explicitly marked rather than guessed.
+Core non-negotiables:
+- **Evidence or it didn’t happen**.
+- `TurningPoint` and `Mistake` must carry `EvidenceSpan`.
+- Hidden information must be explicit in `unknowns`.
+- Parser behavior is deterministic and fail-open.
+- Initial inference provider is **OpenRouter** (configurable by env, not hardcoded in business logic).
 
-The MVP targets competitive players who want to learn from their games without manual log review, delivering coaching that's fast, auditable, and grounded in observable evidence using LLMs.
+---
 
 ## Build & Test Commands
 
-### Development Setup
+### Setup
 ```bash
-# Install dependencies
-uv sync
+uv sync --all-groups
 ```
 
-### Linting & Formatting
+### Lint & Format
 ```bash
-# Format code (auto-fix)
-uv run ruff format src/
-
-# Lint code (auto-fix)
-uv run ruff check src/ --fix
-
-# Lint without fixing (CI mode)
-uv run ruff check src/
+uv run ruff check .
+uv run ruff format --check .
+# optional autofix
+uv run ruff format .
+uv run ruff check . --fix
 ```
 
-### Testing
+### Tests
 ```bash
-# Run all tests
-uv run pytest
-
-# Run specific test file
-uv run pytest tests/test_auth.py
-
-# Run single test function
-uv run pytest tests/test_auth.py::test_signup_success
-
-# Run with verbose output
-uv run pytest -v
-
-# Run async tests only
-uv run pytest -m asyncio
+uv run pytest -q
+# single file
+uv run pytest tests/test_index_turns.py -q
 ```
 
-## Project Structure & Module Organization
-This repository is an early-stage Python project.
-- `pyproject.toml`: project metadata and Python requirement (`>=3.12`).
-- `README.md`: top-level project overview (currently minimal).
-- `Idea_inicial.md`: product/feature notes.
-- `logs_prueba/`: sample battle-log inputs used for exploration and parsing tests.
+---
 
-When adding code, use a `src/` layout (for example `src/pokecoach/`) and mirror tests under `tests/` (for example `tests/test_parser.py`). Keep raw input files in dedicated data folders and avoid mixing them with source modules.
+## Project Structure
 
-## Coding Style & Naming Conventions
-- **Write all code in English**: variable names, function names, comments, docstrings, and documentation must be in English. (Battle logs are in Spanish, but the codebase is English-only.)
-- Follow PEP 8 with 4-space indentation.
-- Use type hints for public functions and dataclasses/models.
-- Modules/files: `snake_case.py`; classes: `PascalCase`; functions/variables: `snake_case`; constants: `UPPER_SNAKE_CASE`.
-- Prefer small, single-purpose modules (e.g., `parser.py`, `battle_analyzer.py`).
+```text
+.
+├── docs/
+│   └── spec_v1.md
+├── src/
+│   └── pokecoach/
+│       ├── __init__.py
+│       ├── schemas.py
+│       ├── tools.py
+│       └── report.py
+├── tests/
+│   ├── test_schemas.py
+│   ├── test_index_turns.py
+│   ├── test_find_key_events.py
+│   ├── test_compute_basic_stats.py
+│   └── test_report_pipeline.py
+├── logs_prueba/
+├── ROADMAP.md
+└── pyproject.toml
+```
 
-Format and lint consistently; if adding tools, standardize via `pyproject.toml`.
+Notes:
+- `Idea_inicial.md` and `logs_prueba/` are intentionally ignored for commit hygiene.
+- Keep implementation code under `src/pokecoach/` only.
 
-## Testing Guidelines
-Use `pytest`.
-- Test files: `tests/test_<unit>.py`.
-- Test names: `test_<behavior>()`.
-- Cover parsing edge cases using fixtures derived from `logs_prueba/`.
-- Add regression tests for every bug fix.
+---
 
-Target meaningful coverage on core logic (parsing, decision support, and data transformations), not only happy paths.
+## Coding Standards
 
-## Commit & Pull Request Guidelines
-There is no existing commit history yet; adopt Conventional Commits from now on:
-- `feat: add battle log parser`
-- `fix: handle missing move identifiers`
-- `docs: update repository guidelines`
+- Code/docs/comments in repository implementation must be in **English**.
+- Python `>=3.12`.
+- Type hints required for public APIs.
+- Use Pydantic models for typed contracts and validation boundaries.
+- Keep parsing logic deterministic (regex/state-machine style), not LLM-dependent.
+- Prefer small pure functions and explicit return types.
+
+---
+
+## Testing Standards
+
+- Framework: `pytest`.
+- Add tests for every parser/report behavior change.
+- Cover edge cases seen in `logs_prueba/`, especially:
+  - `Turno de [playerName]` placeholder headers.
+  - `Chequeo Pokémon` inter-turn blocks.
+  - Compound event lines/blocks (attack + weakness + KO + prizes).
+- Minimum gates before commit:
+  - `ruff check .`
+  - `ruff format --check .`
+  - `pytest -q`
+
+---
+
+## Commit & PR Rules
+
+Use Conventional Commits:
+- `feat:` new behavior
+- `fix:` bug fix
+- `docs:` documentation/spec changes
+- `chore:` maintenance/tooling
 
 PRs should include:
-- clear summary of behavior changes,
-- linked issue/context,
-- test evidence (`pytest` output),
-- sample input/output when parser behavior changes.
+- what changed and why,
+- test evidence,
+- impact on evidence policy/unknowns behavior when relevant.
 
-Keep PRs focused and small enough for quick review.
+Keep PRs focused and small.
