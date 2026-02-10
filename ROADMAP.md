@@ -8,7 +8,7 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 - ✅ Fase 1 completada.
 - ✅ Fase 2 completada (incluye hardening de eventos compuestos + golden minimum tests).
 - ✅ Fase 3 completada para MVP (report pipeline + guardrails evidence/confidence/cardinality).
-- 🟡 Fase 4 parcialmente completada (DX/CI lista; CLI final pendiente).
+- ✅ Fase 4 completada (CLI `run_report.py` + JSON/Markdown + `--output` + `--deterministic-only` + tests + docs).
 - 🟡 Fase 5 en progreso (golden baselines + architecture contracts activos; faltan KPIs de release formales).
 - ⏳ Fase 6 pendiente (observabilidad opcional).
 
@@ -152,11 +152,10 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 - Golden stability: **100%** del set `tests/golden/expected_minimums.json` en verde.
 
 ## Backlog inmediato (siguiente sprint)
-1. Implementar CLI `run_report.py` (JSON + markdown) y errores claros.
-2. Añadir medición automática de coverage en CI (umbral >=85%).
-3. Expandir golden tests con casos ambiguos/compuestos extra.
-4. Definir checklist de release con thresholds KPI.
-5. Evaluar Fase 6 (Langfuse/Logfire) según costo-beneficio.
+1. Añadir medición automática de coverage en CI (umbral >=85%).
+2. Expandir golden tests con casos ambiguos/compuestos extra.
+3. Definir checklist de release con thresholds KPI.
+4. Evaluar Fase 6 (Langfuse/Logfire) según costo-beneficio.
 
 ---
 
