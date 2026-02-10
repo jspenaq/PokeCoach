@@ -31,7 +31,7 @@ from pokecoach.factories import build_evidence_span
 from pokecoach.guardrails import apply_report_guardrails
 from pokecoach.llm_provider import maybe_generate_guidance
 from pokecoach.schemas import Mistake, PostGameReport, TurningPoint
-from pokecoach.tools import compute_basic_stats, find_key_events, index_turns
+from pokecoach.tools import compute_basic_stats, extract_match_facts, find_key_events, index_turns
 
 
 def _summary_from_context(log_text: str) -> list[str]:
@@ -127,6 +127,7 @@ def _build_mistakes(log_text: str) -> list[Mistake]:
 
 def generate_post_game_report(log_text: str) -> PostGameReport:
     turns = index_turns(log_text)
+    match_facts = extract_match_facts(log_text)
     summary = _summary_from_context(log_text)
 
     if len(summary) < 5:
@@ -161,4 +162,5 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
         mistakes=mistakes,
         unknowns=unknowns,
         next_actions=next_actions,
+        match_facts=match_facts,
     )

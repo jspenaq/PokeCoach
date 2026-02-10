@@ -5,10 +5,15 @@ from __future__ import annotations
 import re
 
 from pokecoach.events.registry import EVENT_DETECTORS, SUPPORTER_KEYWORDS
-from pokecoach.schemas import KeyEvent, KeyEventIndex, MatchStats, TurnSpan, TurnSummary
+from pokecoach.schemas import KeyEvent, KeyEventIndex, MatchFacts, MatchStats, TurnSpan, TurnSummary
 
 TURN_HEADER_RE = re.compile(r"^Turno de \[playerName\]\s*$")
 ACTOR_PREFIX_RE = re.compile(r"^([A-Za-z0-9_\-]+)\s")
+PLAYER_INITIAL_DRAW_RE = re.compile(r"^([A-Za-z0-9_\-]+) robó 7 cartas de la mano inicial\.$")
+PRIZE_TAKEN_RE = re.compile(r"^([A-Za-z0-9_\-]+) tomó (una|\d+) cartas? de Premio\.$")
+CONCEDE_LINE_RE = re.compile(r"(?:El rival se rindió|Te rendiste)\.", re.IGNORECASE)
+CONCEDE_WINNER_RE = re.compile(r"(?:El rival se rindió|Te rendiste)\.\s*([A-Za-z0-9_\-]+) ganó\.", re.IGNORECASE)
+KO_OWNER_RE = re.compile(r"de ([A-Za-z0-9_\-]+) quedó Fuera de Combate", re.IGNORECASE)
 
 
 def _infer_actor(lines: list[str]) -> str | None:
@@ -20,6 +25,13 @@ def _infer_actor(lines: list[str]) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+def _actor_prefix_from_text(text: str) -> str | None:
+    match = ACTOR_PREFIX_RE.match(text)
+    if not match:
+        return None
+    return match.group(1)
 
 
 def index_turns(log_text: str) -> list[TurnSpan]:
@@ -117,7 +129,7 @@ def compute_basic_stats(log_text: str) -> MatchStats:
             actor = many_mulligan.group(1)
             mulligans_by_player[actor] = mulligans_by_player.get(actor, 0) + int(many_mulligan.group(2))
 
-        prize_match = re.match(r"^([A-Za-z0-9_\-]+) tomó (una|\d+) cartas? de Premio\.", text)
+        prize_match = PRIZE_TAKEN_RE.match(text)
         if prize_match:
             actor = prize_match.group(1)
             count_text = prize_match.group(2)
@@ -128,4 +140,99 @@ def compute_basic_stats(log_text: str) -> MatchStats:
         went_first_player=went_first_player,
         mulligans_by_player=mulligans_by_player,
         observable_prizes_taken_by_player=prizes_by_player,
+    )
+
+
+def _collect_players(log_text: str) -> list[str]:
+    players: list[str] = []
+    for raw in log_text.splitlines():
+        text = raw.strip()
+        draw_match = PLAYER_INITIAL_DRAW_RE.match(text)
+        if draw_match:
+            player = draw_match.group(1)
+            if player not in players:
+                players.append(player)
+            continue
+        actor = _actor_prefix_from_text(text)
+        if actor and actor not in players:
+            players.append(actor)
+    return players
+
+
+def _infer_ko_actor(lines: list[str], idx: int, owner: str | None, players: list[str]) -> str | None:
+    text = lines[idx].strip()
+    actor = _actor_prefix_from_text(text)
+    if actor:
+        return actor
+
+    if owner and len(players) == 2:
+        other = players[0] if players[1] == owner else players[1]
+        if other != owner:
+            return other
+
+    for offset in range(1, 6):
+        prev_idx = idx - offset
+        if prev_idx < 0:
+            break
+        prev_text = lines[prev_idx].strip()
+        prev_actor = _actor_prefix_from_text(prev_text)
+        if not prev_actor or prev_actor == owner:
+            continue
+        if "infligió" in prev_text or "usó" in prev_text or "usando" in prev_text:
+            return prev_actor
+
+    for offset in range(1, 4):
+        prev_idx = idx - offset
+        if prev_idx < 0:
+            break
+        prev_actor = _actor_prefix_from_text(lines[prev_idx].strip())
+        if prev_actor and prev_actor != owner:
+            return prev_actor
+
+    return None
+
+
+def extract_match_facts(log_text: str) -> MatchFacts:
+    lines = log_text.splitlines()
+    players = _collect_players(log_text)
+    stats = compute_basic_stats(log_text)
+
+    concede = False
+    winner: str | None = None
+    kos_by_player: dict[str, int] = {}
+    unknown_kos = 0
+
+    for idx, raw in enumerate(lines):
+        text = raw.strip()
+        if not text:
+            continue
+
+        if CONCEDE_LINE_RE.search(text):
+            concede = True
+            winner_match = CONCEDE_WINNER_RE.search(text)
+            if winner_match:
+                winner = winner_match.group(1)
+
+        ko_mentions = list(KO_OWNER_RE.finditer(text))
+        if not ko_mentions:
+            continue
+
+        for mention in ko_mentions:
+            owner = mention.group(1)
+            ko_actor = _infer_ko_actor(lines, idx, owner, players)
+            if ko_actor is None:
+                unknown_kos += 1
+                continue
+            kos_by_player[ko_actor] = kos_by_player.get(ko_actor, 0) + 1
+
+    if unknown_kos > 0:
+        kos_by_player["unknown"] = unknown_kos
+
+    return MatchFacts(
+        winner=winner,
+        went_first_player=stats.went_first_player,
+        turns_count=len(index_turns(log_text)),
+        observable_prizes_taken_by_player=dict(stats.observable_prizes_taken_by_player),
+        kos_by_player=kos_by_player,
+        concede=concede,
     )
