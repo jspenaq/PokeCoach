@@ -29,13 +29,13 @@ uv sync
 ### Linting & Formatting
 ```bash
 # Format code (auto-fix)
-uv run ruff format pokecoach/
+uv run ruff format src/
 
 # Lint code (auto-fix)
-uv run ruff check pokecoach/ --fix
+uv run ruff check src/ --fix
 
 # Lint without fixing (CI mode)
-uv run ruff check pokecoach/
+uv run ruff check src/
 ```
 
 ### Testing

@@ -180,6 +180,7 @@ pyrightconfig.json
 *.db-shm
 
 ### VisualStudioCode ###
+.vscode/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
