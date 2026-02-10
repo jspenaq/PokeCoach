@@ -25,9 +25,7 @@ def run_agent_report(prompt: str, model_name: str) -> PoCReport:
     agent = Agent(
         model_name,
         output_type=PoCReport,
-        system_prompt=(
-            "You are a concise coaching assistant. Return only grounded, short feedback."
-        ),
+        system_prompt=("You are a concise coaching assistant. Return only grounded, short feedback."),
     )
     result = agent.run_sync(prompt)
     return result.output

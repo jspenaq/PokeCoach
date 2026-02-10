@@ -8,3 +8,26 @@ dependencies = [
     "pydantic>=2.0,<3.0",
     "pydantic-ai>=1.0.5",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.11",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+# Ruff configuration
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pokecoach"]
