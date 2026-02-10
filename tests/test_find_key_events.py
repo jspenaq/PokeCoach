@@ -26,9 +26,8 @@ def test_find_key_events_detects_core_event_types() -> None:
 def test_find_key_events_supports_multiple_events_from_same_line() -> None:
     log_text = (
         "Turno de [playerName]\n"
-        "Kami-Yan infligió 180 puntos de daño usando Comodín Nocturno contra X.\n"
-        "¡X quedó Fuera de Combate!\n"
-        "Kami-Yan tomó una carta de Premio.\n"
+        "Kami-Yan infligió 180 puntos de daño usando Comodín Nocturno contra X. "
+        "¡X quedó Fuera de Combate! Kami-Yan tomó una carta de Premio.\n"
     )
 
     index = find_key_events(log_text)
@@ -37,3 +36,17 @@ def test_find_key_events_supports_multiple_events_from_same_line() -> None:
     assert "ATTACK" in types
     assert "KO" in types
     assert "PRIZE_TAKEN" in types
+
+
+def test_find_key_events_detects_supporter_with_card_ids() -> None:
+    log_text = "Kami-Yan jugó (me1_119) Determinación de Lillie.\n"
+    index = find_key_events(log_text)
+
+    assert any(event.event_type == "SUPPORTER" for event in index.events)
+
+
+def test_find_key_events_detects_stadium_from_play_line() -> None:
+    log_text = "Kami-Yan jugó Pueblo Altamía.\n"
+    index = find_key_events(log_text)
+
+    assert any(event.event_type == "STADIUM" for event in index.events)

@@ -12,10 +12,21 @@ ACTOR_PREFIX_RE = re.compile(r"^([A-Za-z0-9_\-]+)\s")
 SUPPORTER_KEYWORDS = (
     "Determinación de Lillie",
     "Órdenes de Jefes",
+    "Ordenes de Jefes",
     "Liza",
     "Mirtilo",
     "Plan del Profesor Turo",
     "e-Nigma",
+)
+
+ATTACK_RE = re.compile(r"\binfligió\b.*\busando\b", re.IGNORECASE)
+KO_RE = re.compile(r"quedó Fuera de Combate", re.IGNORECASE)
+PRIZE_RE = re.compile(r"\btomó\b\s+(una|\d+)\s+cartas?\s+de\s+Premio", re.IGNORECASE)
+CONCEDE_RE = re.compile(r"El rival se rindió", re.IGNORECASE)
+STADIUM_IN_PLAY_RE = re.compile(r"puso en juego la carta de Estadio", re.IGNORECASE)
+STADIUM_PLAY_RE = re.compile(
+    r"\bjugó\b.*(Pueblo Altamía|Torre de Vigilancia del Equipo Rocket|Torre de Interferencia|Jaula de Combate)",
+    re.IGNORECASE,
 )
 
 
@@ -58,19 +69,19 @@ def _iter_events(lines: list[str]) -> list[KeyEvent]:
         if not text:
             continue
 
-        if "quedó Fuera de Combate" in text:
-            events.append(KeyEvent(event_type="KO", line=i, text=raw))
-
-        if "tomó" in text and "carta" in text and "Premio" in text:
-            events.append(KeyEvent(event_type="PRIZE_TAKEN", line=i, text=raw))
-
-        if "El rival se rindió" in text:
-            events.append(KeyEvent(event_type="CONCEDE", line=i, text=raw))
-
-        if "infligió" in text and "usando" in text:
+        if ATTACK_RE.search(text):
             events.append(KeyEvent(event_type="ATTACK", line=i, text=raw))
 
-        if "puso en juego la carta de Estadio" in text:
+        if KO_RE.search(text):
+            events.append(KeyEvent(event_type="KO", line=i, text=raw))
+
+        if PRIZE_RE.search(text):
+            events.append(KeyEvent(event_type="PRIZE_TAKEN", line=i, text=raw))
+
+        if CONCEDE_RE.search(text):
+            events.append(KeyEvent(event_type="CONCEDE", line=i, text=raw))
+
+        if STADIUM_IN_PLAY_RE.search(text) or STADIUM_PLAY_RE.search(text):
             events.append(KeyEvent(event_type="STADIUM", line=i, text=raw))
 
         if "jugó" in text and any(keyword in text for keyword in SUPPORTER_KEYWORDS):
