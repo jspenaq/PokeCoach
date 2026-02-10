@@ -78,6 +78,22 @@ class MatchFacts(BaseModel):
     concede: bool = False
 
 
+class PlayBundleEvent(BaseModel):
+    line: int = Field(ge=1)
+    text: str = Field(min_length=1)
+    evidence: EvidenceSpan
+
+
+class PlayBundle(BaseModel):
+    turn_number: int = Field(ge=1)
+    actor: str | None = None
+    window: EvidenceSpan
+    gust_event: PlayBundleEvent | None = None
+    action_event: PlayBundleEvent | None = None
+    ko_events: list[PlayBundleEvent] = Field(default_factory=list)
+    prize_events: list[PlayBundleEvent] = Field(default_factory=list)
+
+
 class PostGameReport(BaseModel):
     summary: list[str] = Field(min_length=5, max_length=8)
     turning_points: list[TurningPoint] = Field(min_length=2, max_length=4)
@@ -85,3 +101,4 @@ class PostGameReport(BaseModel):
     unknowns: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(min_length=3, max_length=5)
     match_facts: MatchFacts = Field(default_factory=MatchFacts)
+    play_bundles: list[PlayBundle] = Field(default_factory=list)

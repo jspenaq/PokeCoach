@@ -5,7 +5,16 @@ from __future__ import annotations
 import re
 
 from pokecoach.events.registry import EVENT_DETECTORS, SUPPORTER_KEYWORDS
-from pokecoach.schemas import KeyEvent, KeyEventIndex, MatchFacts, MatchStats, TurnSpan, TurnSummary
+from pokecoach.schemas import (
+    KeyEvent,
+    KeyEventIndex,
+    MatchFacts,
+    MatchStats,
+    PlayBundle,
+    PlayBundleEvent,
+    TurnSpan,
+    TurnSummary,
+)
 
 TURN_HEADER_RE = re.compile(r"^Turno de \[playerName\]\s*$")
 ACTOR_PREFIX_RE = re.compile(r"^([A-Za-z0-9_\-]+)\s")
@@ -26,6 +35,9 @@ KO_CAUSAL_DAMAGE_RE = re.compile(r"\binfligió\s+\d+\s+puntos?\s+de\s+daño\b", 
 KO_CAUSAL_USED_RE = re.compile(r"\busó\b", re.IGNORECASE)
 KO_CAUSAL_GUST_RE = re.compile(r"\bjugó\b.*\bÓrdenes de Jefes\b", re.IGNORECASE)
 KO_CAUSAL_ACTOR_BEFORE_VERB_RE = re.compile(r"\bde ([A-Za-z0-9_\-]+)\s+(?:usó|infligió)\b", re.IGNORECASE)
+PLAY_BUNDLE_GUST_RE = re.compile(r"\bjugó\b.*\bÓrdenes de Jefes\b", re.IGNORECASE)
+PLAY_BUNDLE_ACTION_RE = re.compile(r"(?:\busó\b|\binfligió\b.*\busando\b)", re.IGNORECASE)
+PLAY_BUNDLE_KO_RE = re.compile(r"quedó Fuera de Combate", re.IGNORECASE)
 
 
 def _infer_actor(lines: list[str]) -> str | None:
@@ -123,6 +135,77 @@ def extract_turn_summary(turn_span: TurnSpan, log_text: str) -> TurnSummary:
         bullets = ["Turn contained setup and sequencing actions."]
 
     return TurnSummary(turn_number=turn_span.turn_number, bullets=bullets, evidence=[])
+
+
+def _build_play_bundle_event(line_number: int, text: str) -> PlayBundleEvent:
+    return PlayBundleEvent(
+        line=line_number,
+        text=text,
+        evidence={"start_line": line_number, "end_line": line_number, "raw_lines": [text]},
+    )
+
+
+def _start_play_bundle(turn_span: TurnSpan, actor: str | None, pending_gust: PlayBundleEvent | None) -> PlayBundle:
+    return PlayBundle(
+        turn_number=turn_span.turn_number,
+        actor=actor,
+        window={
+            "start_line": turn_span.start_line,
+            "end_line": turn_span.end_line,
+            "raw_lines": [f"Turn window {turn_span.start_line}-{turn_span.end_line}"],
+        },
+        gust_event=pending_gust,
+    )
+
+
+def extract_play_bundles(log_text: str) -> list[PlayBundle]:
+    lines = log_text.splitlines()
+    turns = index_turns(log_text)
+    bundles: list[PlayBundle] = []
+
+    for turn_span in turns:
+        window_lines = lines[turn_span.start_line - 1 : turn_span.end_line]
+        actor = turn_span.actor or _infer_actor(window_lines[1:])
+        pending_gust: PlayBundleEvent | None = None
+        current: PlayBundle | None = None
+
+        for offset, raw in enumerate(window_lines):
+            text = raw.strip()
+            if not text:
+                continue
+            line_number = turn_span.start_line + offset
+
+            if PLAY_BUNDLE_GUST_RE.search(text):
+                pending_gust = _build_play_bundle_event(line_number, raw)
+                continue
+
+            if PLAY_BUNDLE_ACTION_RE.search(text):
+                if current is not None and (current.action_event or current.ko_events or current.prize_events):
+                    bundles.append(current)
+                current = _start_play_bundle(turn_span, actor, pending_gust)
+                current.action_event = _build_play_bundle_event(line_number, raw)
+                pending_gust = None
+                continue
+
+            if PLAY_BUNDLE_KO_RE.search(text):
+                if current is None:
+                    current = _start_play_bundle(turn_span, actor, pending_gust)
+                    pending_gust = None
+                current.ko_events.append(_build_play_bundle_event(line_number, raw))
+
+            prize_match = PRIZE_TAKEN_RE.match(text)
+            if prize_match:
+                if current is None:
+                    current = _start_play_bundle(turn_span, actor, pending_gust)
+                    pending_gust = None
+                current.prize_events.append(_build_play_bundle_event(line_number, raw))
+
+        if current is not None and (
+            current.gust_event or current.action_event or current.ko_events or current.prize_events
+        ):
+            bundles.append(current)
+
+    return bundles
 
 
 def compute_basic_stats(log_text: str) -> MatchStats:

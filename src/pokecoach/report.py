@@ -32,7 +32,7 @@ from pokecoach.guardrails import apply_report_guardrails
 from pokecoach.llm_provider import maybe_generate_guidance
 from pokecoach.schemas import MatchFacts, Mistake, PostGameReport, TurningPoint
 from pokecoach.summary_integrity import apply_summary_claim_integrity
-from pokecoach.tools import extract_match_facts, find_key_events, index_turns
+from pokecoach.tools import extract_match_facts, extract_play_bundles, find_key_events, index_turns
 
 
 def _summary_from_context(log_text: str, match_facts: MatchFacts) -> list[str]:
@@ -129,6 +129,7 @@ def _build_mistakes(log_text: str) -> list[Mistake]:
 def generate_post_game_report(log_text: str) -> PostGameReport:
     turns = index_turns(log_text)
     match_facts = extract_match_facts(log_text)
+    play_bundles = extract_play_bundles(log_text)
     summary = _summary_from_context(log_text, match_facts)
     fallback_summary = list(summary[:SUMMARY_MAX_ITEMS])
 
@@ -171,4 +172,5 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
         unknowns=unknowns,
         next_actions=next_actions,
         match_facts=match_facts,
+        play_bundles=play_bundles,
     )
