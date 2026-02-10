@@ -96,6 +96,11 @@ Force deterministic path (skip LLM guidance):
 uv run python run_report.py logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt --deterministic-only
 ```
 
+CLI troubleshooting:
+- Missing input file: the CLI exits non-zero and prints `error: Log file not found: <path>` to stderr.
+- Deterministic-only mode: use `--deterministic-only` to bypass LLM guidance and force deterministic fallback output.
+- Output path creation: when using `--output`, parent directories are created automatically if they do not exist.
+
 ## PydanticAI Runtime (OpenRouter-first)
 
 ```bash
