@@ -2,13 +2,32 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EvidenceSpan(BaseModel):
     start_line: int = Field(ge=1)
     end_line: int = Field(ge=1)
     raw_lines: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_line_window(self) -> "EvidenceSpan":
+        if self.end_line < self.start_line:
+            raise ValueError("end_line must be >= start_line")
+        return self
+
+
+class TurnSpan(BaseModel):
+    turn_number: int = Field(ge=1)
+    start_line: int = Field(ge=1)
+    end_line: int = Field(ge=1)
+    actor: str | None = None
+
+    @model_validator(mode="after")
+    def validate_line_window(self) -> "TurnSpan":
+        if self.end_line < self.start_line:
+            raise ValueError("end_line must be >= start_line")
+        return self
 
 
 class TurningPoint(BaseModel):
