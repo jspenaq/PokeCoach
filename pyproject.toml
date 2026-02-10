@@ -31,3 +31,7 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["pokecoach"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
