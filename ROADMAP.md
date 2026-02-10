@@ -3,6 +3,15 @@
 ## North Star
 Construir un coach post-game para Pokémon TCG Live que entregue reportes accionables **sin inventar**: todo claim importante debe tener evidencia de líneas del log.
 
+## Estado actual (2026-02-10)
+- ✅ Fase 0 completada.
+- ✅ Fase 1 completada.
+- ✅ Fase 2 completada (incluye hardening de eventos compuestos + golden minimum tests).
+- ✅ Fase 3 completada para MVP (report pipeline + guardrails evidence/confidence/cardinality).
+- 🟡 Fase 4 parcialmente completada (DX/CI lista; CLI final pendiente).
+- 🟡 Fase 5 en progreso (golden baselines + architecture contracts activos; faltan KPIs de release formales).
+- ⏳ Fase 6 pendiente (observabilidad opcional).
+
 ## Principios no negociables
 - **Evidence or it didn’t happen**.
 - **Unknowns first-class** (mano/prizes/revelaciones incompletas).
@@ -135,12 +144,19 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 
 ---
 
+## KPIs de cierre (release gate)
+- Hallucination rate (claims accionables sin evidencia): **0.0%** objetivo.
+- Evidence coverage (TurningPoint + Mistake con evidencia válida): **100%** obligatorio.
+- CI quality gate: **ruff + pytest en verde** en push/PR a `main`.
+- Cobertura de tests (objetivo inicial): **>=85%** en `src/pokecoach/`.
+- Golden stability: **100%** del set `tests/golden/expected_minimums.json` en verde.
+
 ## Backlog inmediato (siguiente sprint)
-1. `docs/spec_v1.md` (contrato exacto + reglas duras).
-2. Estructura `src/pokecoach/` y `tests/`.
-3. Implementar `index_turns` + tests iniciales.
-4. Implementar `find_key_events` + tests de KO/prizes/attacks.
-5. Integrar orquestador mínimo y validar `PostGameReport`.
+1. Implementar CLI `run_report.py` (JSON + markdown) y errores claros.
+2. Añadir medición automática de coverage en CI (umbral >=85%).
+3. Expandir golden tests con casos ambiguos/compuestos extra.
+4. Definir checklist de release con thresholds KPI.
+5. Evaluar Fase 6 (Langfuse/Logfire) según costo-beneficio.
 
 ---
 
