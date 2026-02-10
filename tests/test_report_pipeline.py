@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from pokecoach import report as report_module
+from pokecoach.llm_provider import LLMReportGuidance
 from pokecoach.report import generate_post_game_report
 from pokecoach.tools import extract_turn_summary, index_turns
 
@@ -84,3 +85,62 @@ def test_match_facts_and_summary_have_zero_discrepancies_for_deterministic_fixtu
     assert summary_ko_count == sum(report.match_facts.kos_by_player.values())
     assert summary_prize_count == sum(report.match_facts.observable_prizes_taken_by_player.values())
     assert summary_turns_count == report.match_facts.turns_count
+
+
+def test_summary_integrity_rewrites_unverifiable_ko_actor_claim_for_log7(monkeypatch) -> None:
+    path = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt")
+    content = path.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        report_module,
+        "maybe_generate_guidance",
+        lambda **_kwargs: LLMReportGuidance(
+            summary=[
+                "Mega-Lopunny ex KO Latias ex.",
+                "Tempo shifted after that exchange.",
+                "Prize pressure increased.",
+                "Unknown hidden info remains relevant.",
+                "Late game sequencing was decisive.",
+            ],
+            next_actions=[
+                "Review sequencing.",
+                "Track prizes.",
+                "Plan retreat lines.",
+            ],
+        ),
+    )
+
+    report = generate_post_game_report(content)
+
+    assert all("lopunny ex ko latias ex" not in item.lower() for item in report.summary)
+    assert "Observed knockout: Latias ex was knocked out." in report.summary
+
+
+def test_summary_integrity_moves_unverifiable_ko_claim_to_unknowns(monkeypatch) -> None:
+    path = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt")
+    log_text = path.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        report_module,
+        "maybe_generate_guidance",
+        lambda **_kwargs: LLMReportGuidance(
+            summary=[
+                "Mega-Lopunny ex KO MissingTarget ex.",
+                "Tempo was contested.",
+                "Prize race mattered.",
+                "Opening setup was uneven.",
+                "Unknown hand info affected options.",
+            ],
+            next_actions=[
+                "Review opening hands.",
+                "Track known resources.",
+                "Practice sequencing.",
+            ],
+        ),
+    )
+
+    report = generate_post_game_report(log_text)
+
+    assert all("mega-lopunny ex ko missingtarget ex" not in item.lower() for item in report.summary)
+    assert any(
+        item.startswith("Unverifiable KO summary claim omitted: Mega-Lopunny ex KO MissingTarget ex.")
+        for item in report.unknowns
+    )
