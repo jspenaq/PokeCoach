@@ -10,16 +10,24 @@ PokeCoach converts noisy battle logs into a typed, auditable `PostGameReport` wi
 ## Current Status
 
 Implemented:
-- Typed contracts (`src/pokecoach/schemas.py`)
+- Typed contracts (`src/pokecoach/schemas.py`), including deterministic `match_facts` and `play_bundles`.
 - Deterministic tools (`src/pokecoach/tools.py`):
   - `index_turns`
   - `find_key_events`
   - `compute_basic_stats`
   - `extract_turn_summary`
-- Initial report assembly (`src/pokecoach/report.py`):
+  - `extract_match_facts`
+  - `extract_play_bundles`
+- Report assembly pipeline (`src/pokecoach/report.py`):
   - `generate_post_game_report(log_text)`
-- Guardrails for evidence + confidence (`tests/test_report_guardrails.py`)
-- Technical contract spec (`docs/spec_v1.md`)
+  - impact-ranked turning points
+  - fact-only Spanish summary enforcement
+- Guardrail/integrity modules:
+  - `src/pokecoach/guardrails.py`
+  - `src/pokecoach/summary_integrity.py`
+- OpenRouter-backed optional guidance (`src/pokecoach/llm_provider.py`) with model-capability routing and deterministic fallback.
+- Release KPI checker (`src/pokecoach/quality_kpis.py`, `scripts/check_release_kpis.py`).
+- Technical contract spec (`docs/spec_v1.md`).
 
 ## Project Structure
 
@@ -28,6 +36,13 @@ src/pokecoach/
   schemas.py
   tools.py
   report.py
+  guardrails.py
+  summary_integrity.py
+  llm_provider.py
+  quality_kpis.py
+  events/registry.py
+scripts/
+  check_release_kpis.py
 tests/
 logs_prueba/
 docs/spec_v1.md
@@ -64,7 +79,7 @@ from pathlib import Path
 
 from pokecoach.report import generate_post_game_report
 
-log_text = Path("logs_prueba/battle_logs_9_feb_2026_spanish.txt").read_text(encoding="utf-8")
+log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt").read_text(encoding="utf-8")
 report = generate_post_game_report(log_text)
 
 print(report.model_dump_json(indent=2))
@@ -144,6 +159,19 @@ export OPENROUTER_API_KEY="your_key"
 export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
 export POKECOACH_PYDANTICAI_MODEL="openai/gpt-4o-mini"
 uv run python examples/pydanticai_poc.py
+```
+
+Model compatibility routing (runtime):
+- Structured output path is used by default.
+- If a provider/model requires `tool_choice=auto` semantics, PokeCoach can route to a text+JSON validation path and then validate locally with Pydantic.
+- Deterministic fallback remains the safety net when live guidance fails.
+
+Useful debug flags:
+
+```bash
+export POKECOACH_LLM_DEBUG=1
+# optional comma-separated list for forced text+json mode
+export POKECOACH_TOOL_CHOICE_AUTO_MODELS="z-ai/glm-4.5-air:free"
 ```
 
 ## License
