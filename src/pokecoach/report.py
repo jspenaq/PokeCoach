@@ -29,6 +29,7 @@ from pokecoach.constants import (
 )
 from pokecoach.factories import build_evidence_span
 from pokecoach.guardrails import apply_report_guardrails
+from pokecoach.llm_provider import maybe_generate_guidance
 from pokecoach.schemas import Mistake, PostGameReport, TurningPoint
 from pokecoach.tools import compute_basic_stats, find_key_events, index_turns
 
@@ -144,6 +145,15 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
         unknowns=unknowns,
         event_indexer=find_key_events,
     )
+
+    llm_guidance = maybe_generate_guidance(
+        log_text=log_text,
+        fallback_summary=summary[:SUMMARY_MAX_ITEMS],
+        fallback_next_actions=next_actions,
+    )
+    if llm_guidance is not None:
+        summary = llm_guidance.summary
+        next_actions = llm_guidance.next_actions
 
     return PostGameReport(
         summary=summary[:SUMMARY_MAX_ITEMS],

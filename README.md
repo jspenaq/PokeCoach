@@ -70,17 +70,18 @@ report = generate_post_game_report(log_text)
 print(report.model_dump_json(indent=2))
 ```
 
-## PoC (pydantic + pydantic-ai)
+## PydanticAI Runtime (OpenRouter-first)
 
 ```bash
 uv run python examples/pydanticai_poc.py
 ```
 
-Optional real model path:
+Optional live model path (OpenRouter):
 
 ```bash
-export OPENAI_API_KEY="your_key"
-export POKECOACH_PYDANTICAI_MODEL="openai:gpt-4o-mini"
+export OPENROUTER_API_KEY="your_key"
+export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+export POKECOACH_PYDANTICAI_MODEL="openai/gpt-4o-mini"
 uv run python examples/pydanticai_poc.py
 ```
 
