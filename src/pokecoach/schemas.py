@@ -30,6 +30,30 @@ class TurnSpan(BaseModel):
         return self
 
 
+class KeyEvent(BaseModel):
+    event_type: str
+    line: int = Field(ge=1)
+    text: str = Field(min_length=1)
+
+
+class KeyEventIndex(BaseModel):
+    events: list[KeyEvent] = Field(default_factory=list)
+
+
+class MatchStats(BaseModel):
+    went_first: str | None = None
+    mulligans_self: int | None = None
+    mulligans_opponent: int | None = None
+    observable_prizes_taken_self: int | None = None
+    observable_prizes_taken_opponent: int | None = None
+
+
+class TurnSummary(BaseModel):
+    turn_number: int = Field(ge=1)
+    bullets: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceSpan] = Field(default_factory=list)
+
+
 class TurningPoint(BaseModel):
     title: str = Field(min_length=1)
     impact: str = Field(min_length=1)
