@@ -2,13 +2,35 @@
 
 from __future__ import annotations
 
+from pokecoach.constants import (
+    DEFAULT_NEXT_ACTIONS,
+    DEFAULT_UNKNOWNS,
+    FALLBACK_SUMMARY_ITEMS,
+    MISTAKE_EVENT_BETTER_LINE,
+    MISTAKE_EVENT_CONFIDENCE,
+    MISTAKE_EVENT_DESCRIPTION,
+    MISTAKE_EVENT_WHY,
+    MISTAKE_FALLBACK_BETTER_LINE,
+    MISTAKE_FALLBACK_CONFIDENCE,
+    MISTAKE_FALLBACK_DESCRIPTION,
+    MISTAKE_FALLBACK_WHY,
+    MISTAKES_MAX_ITEMS,
+    MISTAKES_MIN_ITEMS,
+    SUMMARY_MAX_ITEMS,
+    TURNING_POINT_ATTACK_CONFIDENCE,
+    TURNING_POINT_EVENT_CONFIDENCE,
+    TURNING_POINT_EVENT_IMPACT,
+    TURNING_POINT_FALLBACK_CONFIDENCE,
+    TURNING_POINT_FALLBACK_IMPACT,
+    TURNING_POINT_FALLBACK_TITLE,
+    TURNING_POINTS_MAX_ITEMS,
+    TURNING_POINTS_MIN_ITEMS,
+    UNKNOWN_INFERRED_TURN_ACTORS,
+)
+from pokecoach.factories import build_evidence_span
 from pokecoach.guardrails import apply_report_guardrails
-from pokecoach.schemas import EvidenceSpan, Mistake, PostGameReport, TurningPoint
+from pokecoach.schemas import Mistake, PostGameReport, TurningPoint
 from pokecoach.tools import compute_basic_stats, find_key_events, index_turns
-
-
-def _make_evidence(line: int, text: str) -> EvidenceSpan:
-    return EvidenceSpan(start_line=line, end_line=line, raw_lines=[text])
 
 
 def _summary_from_context(log_text: str) -> list[str]:
@@ -29,7 +51,7 @@ def _summary_from_context(log_text: str) -> list[str]:
     summary.append("Momentum swings were driven by attack-to-KO sequences.")
     summary.append("Unknown hidden information may change optimal lines.")
 
-    return summary[:8]
+    return summary[:SUMMARY_MAX_ITEMS]
 
 
 def _build_turning_points(log_text: str) -> list[TurningPoint]:
@@ -37,32 +59,34 @@ def _build_turning_points(log_text: str) -> list[TurningPoint]:
     priority = [event for event in events if event.event_type in {"KO", "PRIZE_TAKEN", "ATTACK"}]
 
     turning_points: list[TurningPoint] = []
-    for event in priority[:4]:
+    for event in priority[:TURNING_POINTS_MAX_ITEMS]:
         turning_points.append(
             TurningPoint(
                 title=f"{event.event_type} swing",
-                impact="This event changed tempo or prize pressure.",
-                confidence=0.75 if event.event_type != "ATTACK" else 0.62,
+                impact=TURNING_POINT_EVENT_IMPACT,
+                confidence=(
+                    TURNING_POINT_EVENT_CONFIDENCE if event.event_type != "ATTACK" else TURNING_POINT_ATTACK_CONFIDENCE
+                ),
                 depends_on_hidden_info=event.event_type == "ATTACK",
-                evidence=_make_evidence(event.line, event.text),
+                evidence=build_evidence_span(event.line, event.text),
             )
         )
 
-    while len(turning_points) < 2:
+    while len(turning_points) < TURNING_POINTS_MIN_ITEMS:
         fallback = events[0] if events else None
         if fallback is None:
             break
         turning_points.append(
             TurningPoint(
-                title="Early tempo signal",
-                impact="Early sequence likely shaped the game flow.",
-                confidence=0.55,
+                title=TURNING_POINT_FALLBACK_TITLE,
+                impact=TURNING_POINT_FALLBACK_IMPACT,
+                confidence=TURNING_POINT_FALLBACK_CONFIDENCE,
                 depends_on_hidden_info=True,
-                evidence=_make_evidence(fallback.line, fallback.text),
+                evidence=build_evidence_span(fallback.line, fallback.text),
             )
         )
 
-    return turning_points[:4]
+    return turning_points[:TURNING_POINTS_MAX_ITEMS]
 
 
 def _build_mistakes(log_text: str) -> list[Mistake]:
@@ -70,34 +94,34 @@ def _build_mistakes(log_text: str) -> list[Mistake]:
     candidates = [event for event in events if event.event_type in {"ATTACK", "KO", "SUPPORTER"}]
 
     mistakes: list[Mistake] = []
-    for event in candidates[:6]:
+    for event in candidates[:MISTAKES_MAX_ITEMS]:
         mistakes.append(
             Mistake(
-                description=f"Review decision around {event.event_type.lower()} event.",
-                why_it_matters="This sequence affected board pressure and prize race.",
-                better_line="Re-evaluate sequencing before committing major actions.",
-                confidence=0.64,
+                description=MISTAKE_EVENT_DESCRIPTION.format(event_type=event.event_type.lower()),
+                why_it_matters=MISTAKE_EVENT_WHY,
+                better_line=MISTAKE_EVENT_BETTER_LINE,
+                confidence=MISTAKE_EVENT_CONFIDENCE,
                 depends_on_hidden_info=event.event_type != "KO",
-                evidence=_make_evidence(event.line, event.text),
+                evidence=build_evidence_span(event.line, event.text),
             )
         )
 
-    while len(mistakes) < 3:
+    while len(mistakes) < MISTAKES_MIN_ITEMS:
         fallback = events[0] if events else None
         if fallback is None:
             break
         mistakes.append(
             Mistake(
-                description="Review early setup sequencing.",
-                why_it_matters="Early sequencing influences later tempo windows.",
-                better_line="Run pre-attack sequencing checklist.",
-                confidence=0.55,
+                description=MISTAKE_FALLBACK_DESCRIPTION,
+                why_it_matters=MISTAKE_FALLBACK_WHY,
+                better_line=MISTAKE_FALLBACK_BETTER_LINE,
+                confidence=MISTAKE_FALLBACK_CONFIDENCE,
                 depends_on_hidden_info=True,
-                evidence=_make_evidence(fallback.line, fallback.text),
+                evidence=build_evidence_span(fallback.line, fallback.text),
             )
         )
 
-    return mistakes[:6]
+    return mistakes[:MISTAKES_MAX_ITEMS]
 
 
 def generate_post_game_report(log_text: str) -> PostGameReport:
@@ -105,26 +129,13 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
     summary = _summary_from_context(log_text)
 
     if len(summary) < 5:
-        summary.extend(
-            [
-                "Opening turns established initial board state.",
-                "Mid-game exchanges influenced tempo.",
-                "Endgame lines depended on available resources.",
-            ]
-        )
+        summary.extend(FALLBACK_SUMMARY_ITEMS)
 
-    unknowns = [
-        "Opponent hand information is incomplete.",
-        "Prize card mapping is partially hidden unless revealed in the log.",
-    ]
+    unknowns = list(DEFAULT_UNKNOWNS)
     if turns and turns[0].actor is None:
-        unknowns.append("Some turn actors were inferred due to placeholder turn headers.")
+        unknowns.append(UNKNOWN_INFERRED_TURN_ACTORS)
 
-    next_actions = [
-        "Practice prize mapping before each high-impact attack.",
-        "Review supporter sequencing on turns with tempo swings.",
-        "Rehearse a pre-commit checklist for attack and retreat decisions.",
-    ]
+    next_actions = list(DEFAULT_NEXT_ACTIONS)
 
     turning_points, mistakes, unknowns = apply_report_guardrails(
         log_text=log_text,
@@ -135,7 +146,7 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
     )
 
     return PostGameReport(
-        summary=summary[:8],
+        summary=summary[:SUMMARY_MAX_ITEMS],
         turning_points=turning_points,
         mistakes=mistakes,
         unknowns=unknowns,
