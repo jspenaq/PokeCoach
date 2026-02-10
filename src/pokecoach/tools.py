@@ -145,7 +145,12 @@ def _build_play_bundle_event(line_number: int, text: str) -> PlayBundleEvent:
     )
 
 
-def _start_play_bundle(turn_span: TurnSpan, actor: str | None, pending_gust: PlayBundleEvent | None) -> PlayBundle:
+def _start_play_bundle(
+    turn_span: TurnSpan,
+    actor: str | None,
+    gust_event: PlayBundleEvent | None = None,
+    action_event: PlayBundleEvent | None = None,
+) -> PlayBundle:
     return PlayBundle(
         turn_number=turn_span.turn_number,
         actor=actor,
@@ -154,8 +159,31 @@ def _start_play_bundle(turn_span: TurnSpan, actor: str | None, pending_gust: Pla
             "end_line": turn_span.end_line,
             "raw_lines": [f"Turn window {turn_span.start_line}-{turn_span.end_line}"],
         },
-        gust_event=pending_gust,
+        gust_event=gust_event,
+        action_event=action_event,
     )
+
+
+def _parse_prize_count(prize_text: str) -> int:
+    match = PRIZE_TAKEN_RE.match(prize_text.strip())
+    if not match:
+        return 0
+    count_text = match.group(2)
+    return 1 if count_text == "una" else int(count_text)
+
+
+def _pick_primary_action_index(
+    action_events: list[PlayBundleEvent],
+    action_ko_events: list[list[PlayBundleEvent]],
+    action_prize_events: list[list[PlayBundleEvent]],
+) -> int:
+    ranked = []
+    for index, action_event in enumerate(action_events):
+        ko_count = len(action_ko_events[index])
+        prize_total = sum(_parse_prize_count(event.text) for event in action_prize_events[index])
+        prize_event_count = len(action_prize_events[index])
+        ranked.append((ko_count, prize_total, prize_event_count, action_event.line, index))
+    return max(ranked)[4]
 
 
 def extract_play_bundles(log_text: str) -> list[PlayBundle]:
@@ -166,8 +194,13 @@ def extract_play_bundles(log_text: str) -> list[PlayBundle]:
     for turn_span in turns:
         window_lines = lines[turn_span.start_line - 1 : turn_span.end_line]
         actor = turn_span.actor or _infer_actor(window_lines[1:])
-        pending_gust: PlayBundleEvent | None = None
-        current: PlayBundle | None = None
+        gust_events: list[PlayBundleEvent] = []
+        action_events: list[PlayBundleEvent] = []
+        action_ko_events: list[list[PlayBundleEvent]] = []
+        action_prize_events: list[list[PlayBundleEvent]] = []
+        unscoped_ko_events: list[PlayBundleEvent] = []
+        unscoped_prize_events: list[PlayBundleEvent] = []
+        current_action_index: int | None = None
 
         for offset, raw in enumerate(window_lines):
             text = raw.strip()
@@ -176,34 +209,59 @@ def extract_play_bundles(log_text: str) -> list[PlayBundle]:
             line_number = turn_span.start_line + offset
 
             if PLAY_BUNDLE_GUST_RE.search(text):
-                pending_gust = _build_play_bundle_event(line_number, raw)
+                gust_events.append(_build_play_bundle_event(line_number, raw))
                 continue
 
             if PLAY_BUNDLE_ACTION_RE.search(text):
-                if current is not None and (current.action_event or current.ko_events or current.prize_events):
-                    bundles.append(current)
-                current = _start_play_bundle(turn_span, actor, pending_gust)
-                current.action_event = _build_play_bundle_event(line_number, raw)
-                pending_gust = None
+                action_events.append(_build_play_bundle_event(line_number, raw))
+                action_ko_events.append([])
+                action_prize_events.append([])
+                current_action_index = len(action_events) - 1
                 continue
 
             if PLAY_BUNDLE_KO_RE.search(text):
-                if current is None:
-                    current = _start_play_bundle(turn_span, actor, pending_gust)
-                    pending_gust = None
-                current.ko_events.append(_build_play_bundle_event(line_number, raw))
+                event = _build_play_bundle_event(line_number, raw)
+                if current_action_index is None:
+                    unscoped_ko_events.append(event)
+                else:
+                    action_ko_events[current_action_index].append(event)
 
             prize_match = PRIZE_TAKEN_RE.match(text)
             if prize_match:
-                if current is None:
-                    current = _start_play_bundle(turn_span, actor, pending_gust)
-                    pending_gust = None
-                current.prize_events.append(_build_play_bundle_event(line_number, raw))
+                event = _build_play_bundle_event(line_number, raw)
+                if current_action_index is None:
+                    unscoped_prize_events.append(event)
+                else:
+                    action_prize_events[current_action_index].append(event)
 
-        if current is not None and (
-            current.gust_event or current.action_event or current.ko_events or current.prize_events
-        ):
-            bundles.append(current)
+        primary_action: PlayBundleEvent | None = None
+        ko_events: list[PlayBundleEvent] = list(unscoped_ko_events)
+        prize_events: list[PlayBundleEvent] = list(unscoped_prize_events)
+        if action_events:
+            primary_action_index = _pick_primary_action_index(action_events, action_ko_events, action_prize_events)
+            primary_action = action_events[primary_action_index]
+            ko_events.extend(action_ko_events[primary_action_index])
+            prize_events.extend(action_prize_events[primary_action_index])
+
+        gust_event: PlayBundleEvent | None = None
+        if gust_events:
+            if primary_action is None:
+                gust_event = gust_events[-1]
+            else:
+                gust_before_action = [event for event in gust_events if event.line < primary_action.line]
+                if gust_before_action:
+                    gust_event = gust_before_action[-1]
+
+        bundle = _start_play_bundle(
+            turn_span=turn_span,
+            actor=actor,
+            gust_event=gust_event,
+            action_event=primary_action,
+        )
+        bundle.ko_events = ko_events
+        bundle.prize_events = prize_events
+        if bundle.gust_event or bundle.action_event or bundle.ko_events or bundle.prize_events:
+            bundles.append(bundle)
 
     return bundles
 
