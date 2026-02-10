@@ -19,6 +19,13 @@ PRIZE_TAKEN_RE = re.compile(r"^([A-Za-z0-9_\-]+) tomó (una|\d+) cartas? de Prem
 CONCEDE_LINE_RE = re.compile(r"(?:El rival se rindió|Te rendiste)\.", re.IGNORECASE)
 CONCEDE_WINNER_RE = re.compile(r"(?:El rival se rindió|Te rendiste)\.\s*([A-Za-z0-9_\-]+) ganó\.", re.IGNORECASE)
 KO_OWNER_RE = re.compile(r"de ([A-Za-z0-9_\-]+) quedó Fuera de Combate", re.IGNORECASE)
+KO_LOOKBACK_DEFAULT = 12
+KO_LOOKBACK_MIN = 8
+KO_LOOKBACK_MAX = 15
+KO_CAUSAL_DAMAGE_RE = re.compile(r"\binfligió\s+\d+\s+puntos?\s+de\s+daño\b", re.IGNORECASE)
+KO_CAUSAL_USED_RE = re.compile(r"\busó\b", re.IGNORECASE)
+KO_CAUSAL_GUST_RE = re.compile(r"\bjugó\b.*\bÓrdenes de Jefes\b", re.IGNORECASE)
+KO_CAUSAL_ACTOR_BEFORE_VERB_RE = re.compile(r"\bde ([A-Za-z0-9_\-]+)\s+(?:usó|infligió)\b", re.IGNORECASE)
 
 
 def _infer_actor(lines: list[str]) -> str | None:
@@ -183,43 +190,62 @@ def _collect_players(log_text: str) -> list[str]:
     return players
 
 
-def _infer_ko_actor(lines: list[str], idx: int, owner: str | None, players: list[str]) -> str | None:
-    text = lines[idx].strip()
-    actor = infer_actor(text)
-    if actor:
-        return actor
+def _resolve_ko_lookback_window(ko_lookback_window: int | None) -> int:
+    if ko_lookback_window is None:
+        return KO_LOOKBACK_DEFAULT
+    return max(KO_LOOKBACK_MIN, min(KO_LOOKBACK_MAX, ko_lookback_window))
 
-    if owner and len(players) == 2:
-        other = players[0] if players[1] == owner else players[1]
-        if other != owner:
-            return other
 
-    for offset in range(1, 6):
-        prev_idx = idx - offset
-        if prev_idx < 0:
-            break
-        prev_text = lines[prev_idx].strip()
-        prev_actor = infer_actor(prev_text)
-        if not prev_actor or prev_actor == owner:
-            continue
-        if "infligió" in prev_text or "usó" in prev_text or "usando" in prev_text:
-            return prev_actor
+def _turn_floor_idx(lines: list[str], idx: int) -> int:
+    for prev_idx in range(idx, -1, -1):
+        if TURN_HEADER_RE.match(lines[prev_idx].strip()):
+            return prev_idx
+    return 0
 
-    for offset in range(1, 4):
-        prev_idx = idx - offset
-        if prev_idx < 0:
-            break
-        prev_actor = infer_actor(lines[prev_idx].strip())
-        if prev_actor and prev_actor != owner:
-            return prev_actor
+
+def _extract_causal_actor(text: str, players: list[str]) -> str | None:
+    inferred = infer_actor(text)
+    if inferred and inferred in players:
+        return inferred
+
+    match = KO_CAUSAL_ACTOR_BEFORE_VERB_RE.search(text)
+    if match and match.group(1) in players:
+        return match.group(1)
 
     return None
 
 
-def extract_match_facts(log_text: str) -> MatchFacts:
+def _is_causal_ko_event(text: str) -> bool:
+    return bool(KO_CAUSAL_DAMAGE_RE.search(text) or KO_CAUSAL_USED_RE.search(text) or KO_CAUSAL_GUST_RE.search(text))
+
+
+def _infer_ko_actor(
+    lines: list[str],
+    idx: int,
+    players: list[str],
+    ko_lookback_window: int,
+) -> str | None:
+    floor_by_window = max(0, idx - ko_lookback_window)
+    floor_by_turn = _turn_floor_idx(lines, idx)
+    search_floor = max(floor_by_window, floor_by_turn)
+
+    for prev_idx in range(idx - 1, search_floor - 1, -1):
+        prev_text = lines[prev_idx].strip()
+        if not prev_text:
+            continue
+        if not _is_causal_ko_event(prev_text):
+            continue
+        actor = _extract_causal_actor(prev_text, players)
+        if actor:
+            return actor
+    return None
+
+
+def extract_match_facts(log_text: str, ko_lookback_window: int | None = None) -> MatchFacts:
     lines = log_text.splitlines()
     players = _collect_players(log_text)
     stats = compute_basic_stats(log_text)
+    resolved_ko_lookback_window = _resolve_ko_lookback_window(ko_lookback_window)
 
     concede = False
     winner: str | None = None
@@ -243,9 +269,11 @@ def extract_match_facts(log_text: str) -> MatchFacts:
 
         for mention in ko_mentions:
             owner = mention.group(1)
-            ko_actor = _infer_ko_actor(lines, idx, owner, players)
+            ko_actor = _infer_ko_actor(lines, idx, players, resolved_ko_lookback_window)
             if ko_actor is None:
                 unknown_kos += 1
+                continue
+            if ko_actor == owner:
                 continue
             kos_by_player[ko_actor] = kos_by_player.get(ko_actor, 0) + 1
 
