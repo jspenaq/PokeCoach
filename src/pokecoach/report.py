@@ -56,9 +56,9 @@ ENGLISH_OUTPUT_MARKERS_RE = re.compile(
     re.IGNORECASE,
 )
 SPANISH_FALLBACK_SUMMARY_ITEMS = (
-    "Los primeros turnos establecieron el estado inicial de la mesa.",
-    "Los intercambios de mitad de partida influyeron en el ritmo.",
-    "Las líneas de cierre dependieron de los recursos disponibles.",
+    "Se observaron turnos y eventos contables en el registro.",
+    "Se observaron Fuera de Combate con evidencia en el registro.",
+    "Se observaron tomas de cartas de Premio con evidencia en el registro.",
 )
 SPANISH_DEFAULT_NEXT_ACTIONS = (
     "Practica el mapeo de Premios antes de cada ataque de alto impacto.",
@@ -225,6 +225,31 @@ def _build_event_turning_point(event: KeyEvent, spanish_mode: bool) -> tuple[int
     )
 
 
+def _extract_action_actor(action_text: str) -> tuple[str, str] | None:
+    match = re.search(r"El\s+\([^)]+\)\s+(.+?)\s+de\s+([A-Za-z0-9_\-]+)\s+usó", action_text)
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
+def _fact_summary_from_bundle(bundle) -> str | None:
+    if bundle.action_event is None or not bundle.ko_events:
+        return None
+
+    action_actor = _extract_action_actor(bundle.action_event.text)
+    if action_actor is None:
+        return None
+
+    pokemon_name, player_name = action_actor
+    target = _extract_ko_target(bundle.ko_events[0].text)
+    total_prizes = sum(_extract_prize_count(event.text) for event in bundle.prize_events)
+
+    if total_prizes <= 0:
+        return f"{pokemon_name} de {player_name} noqueó a {target}."
+    prize_label = "carta" if total_prizes == 1 else "cartas"
+    return f"{pokemon_name} de {player_name} noqueó a {target} y tomó {total_prizes} {prize_label} de Premio."
+
+
 def _summary_from_context(log_text: str, match_facts: MatchFacts, spanish_mode: bool) -> list[str]:
     events = find_key_events(log_text).events
 
@@ -235,6 +260,17 @@ def _summary_from_context(log_text: str, match_facts: MatchFacts, spanish_mode: 
         else:
             summary.append(f"{match_facts.went_first_player} took the first turn.")
 
+    if spanish_mode:
+        for bundle in extract_play_bundles(log_text):
+            factual_bullet = _fact_summary_from_bundle(bundle)
+            if factual_bullet is not None and factual_bullet not in summary:
+                summary.append(factual_bullet)
+            if len(summary) >= SUMMARY_MAX_ITEMS:
+                break
+
+        if match_facts.concede and match_facts.winner:
+            summary.append(f"El rival se rindió. {match_facts.winner} ganó.")
+
     ko_count = sum(match_facts.kos_by_player.values())
     prize_count = sum(match_facts.observable_prizes_taken_by_player.values())
     attack_count = sum(1 for event in events if event.event_type == "ATTACK")
@@ -244,17 +280,13 @@ def _summary_from_context(log_text: str, match_facts: MatchFacts, spanish_mode: 
         summary.append(f"Se observaron {ko_count} Fuera de Combate.")
         summary.append(f"Se observaron {prize_count} cartas de Premio visibles tomadas.")
         summary.append(f"Se observaron {match_facts.turns_count} turnos en el registro.")
-        summary.append("Los cambios de ritmo estuvieron impulsados por secuencias de ataque y KO.")
-        summary.append("La información oculta puede cambiar la línea óptima.")
     else:
         summary.append(f"Observed {attack_count} attack events in the log.")
         summary.append(f"Observed {ko_count} knockout events.")
         summary.append(f"Observed {prize_count} observable prize cards taken.")
         summary.append(f"Observed {match_facts.turns_count} turns in the log.")
-        summary.append("Momentum swings were driven by attack-to-KO sequences.")
-        summary.append("Unknown hidden information may change optimal lines.")
 
-    return summary[:SUMMARY_MAX_ITEMS]
+    return list(dict.fromkeys(summary))[:SUMMARY_MAX_ITEMS]
 
 
 def _build_turning_points(log_text: str, spanish_mode: bool) -> list[TurningPoint]:

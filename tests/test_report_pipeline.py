@@ -282,3 +282,25 @@ def test_turning_points_include_endgame_concede_when_present(monkeypatch) -> Non
     report = generate_post_game_report(log_text)
 
     assert any(tp.title == "Concede closes endgame" for tp in report.turning_points)
+
+
+def test_summary_fact_only_for_log7_includes_colagrito_latias_two_prize(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(report_module, "maybe_generate_guidance", lambda **_kwargs: None)
+
+    report = generate_post_game_report(log_text)
+    combined = "\n".join(report.summary)
+
+    assert "Colagrito de SpicyTaco30 noqueó a Latias ex y tomó 2 cartas de Premio." in combined
+
+
+def test_summary_for_log7_omits_interpretive_spin(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_7.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(report_module, "maybe_generate_guidance", lambda **_kwargs: None)
+
+    report = generate_post_game_report(log_text)
+    combined = " ".join(report.summary).lower()
+
+    assert "presión" not in combined
+    assert "ritmo" not in combined
+    assert "momentum" not in combined

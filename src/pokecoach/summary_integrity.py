@@ -13,6 +13,13 @@ KO_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 CAUSAL_LINE_RE = re.compile(r"\b(?:usó|infligió|jugó)\b", re.IGNORECASE)
+INTERPRETIVE_SPIN_RE = re.compile(
+    r"\b("
+    r"presión|dominio|dominó|momentum|ritmo|decisiv|"
+    r"psychological|psychologic|tempo shifted|tempo"
+    r")\b",
+    re.IGNORECASE,
+)
 DEFAULT_WINDOW = 12
 
 
@@ -31,6 +38,17 @@ def apply_summary_claim_integrity(
     normalized_summary: list[str] = []
 
     for bullet in summary:
+        if INTERPRETIVE_SPIN_RE.search(bullet):
+            unknown = (
+                f"Frase interpretativa omitida del resumen: {bullet}"
+                if spanish_mode
+                else f"Interpretive summary phrase omitted: {bullet}"
+            )
+            if unknown not in unknown_seen:
+                normalized_unknowns.append(unknown)
+                unknown_seen.add(unknown)
+            continue
+
         claim = _extract_ko_claim(bullet)
         if claim is None:
             normalized_summary.append(bullet)
