@@ -4,7 +4,7 @@ from pokecoach.tools import find_key_events
 
 
 def _all_logs() -> list[Path]:
-    return sorted(Path("logs_prueba").glob("battle_logs_9_feb_2026_spanish*.txt"))
+    return sorted(Path("logs_prueba").glob("battle_logs_ptcgl_spanish*.txt"))
 
 
 def test_find_key_events_detects_core_event_types() -> None:

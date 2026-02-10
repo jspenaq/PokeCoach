@@ -1,29 +1,29 @@
 {
-  "battle_logs_9_feb_2026_spanish.txt": {
+  "battle_logs_ptcgl_spanish.txt": {
     "min_turns": 7,
     "min_attacks": 4,
     "min_kos": 4,
     "has_concede": true
   },
-  "battle_logs_9_feb_2026_spanish_con_ids_1.txt": {
+  "battle_logs_ptcgl_spanish_con_ids_1.txt": {
     "min_turns": 7,
     "min_attacks": 1,
     "min_kos": 1,
     "has_concede": true
   },
-  "battle_logs_9_feb_2026_spanish_con_ids_2.txt": {
+  "battle_logs_ptcgl_spanish_con_ids_2.txt": {
     "min_turns": 8,
     "min_attacks": 5,
     "min_kos": 7,
     "has_concede": false
   },
-  "battle_logs_9_feb_2026_spanish_con_ids_3.txt": {
+  "battle_logs_ptcgl_spanish_con_ids_3.txt": {
     "min_turns": 5,
     "min_attacks": 0,
     "min_kos": 0,
     "has_concede": true
   },
-  "battle_logs_9_feb_2026_spanish_con_ids_4.txt": {
+  "battle_logs_ptcgl_spanish_con_ids_4.txt": {
     "min_turns": 13,
     "min_attacks": 8,
     "min_kos": 7,

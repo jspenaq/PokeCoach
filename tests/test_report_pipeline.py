@@ -9,7 +9,7 @@ from pokecoach.tools import extract_turn_summary, index_turns
 
 
 def test_extract_turn_summary_returns_bullets() -> None:
-    path = Path("logs_prueba/battle_logs_9_feb_2026_spanish.txt")
+    path = Path("logs_prueba/battle_logs_ptcgl_spanish.txt")
     content = path.read_text(encoding="utf-8")
     turns = index_turns(content)
 
@@ -19,7 +19,7 @@ def test_extract_turn_summary_returns_bullets() -> None:
 
 
 def test_generate_post_game_report_contract() -> None:
-    path = Path("logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt")
+    path = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt")
     content = path.read_text(encoding="utf-8")
 
     report = generate_post_game_report(content)
@@ -33,7 +33,7 @@ def test_generate_post_game_report_contract() -> None:
 
 
 def test_generate_post_game_report_uses_deterministic_fallback_when_llm_unavailable(monkeypatch) -> None:
-    path = Path("logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt")
+    path = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt")
     content = path.read_text(encoding="utf-8")
 
     monkeypatch.setattr(report_module, "maybe_generate_guidance", lambda **_kwargs: None)
@@ -48,8 +48,8 @@ def test_generate_post_game_report_uses_deterministic_fallback_when_llm_unavaila
 @pytest.mark.parametrize(
     "fixture_path",
     [
-        Path("logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt"),
-        Path("logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_2.txt"),
+        Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt"),
+        Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_2.txt"),
     ],
 )
 def test_match_facts_and_summary_have_zero_discrepancies_for_deterministic_fixtures(

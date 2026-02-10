@@ -8,7 +8,7 @@ from pathlib import Path
 
 UV_CACHE_DIR = "/tmp/uv-cache"
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LOG_PATH = "logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt"
+LOG_PATH = "logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt"
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:

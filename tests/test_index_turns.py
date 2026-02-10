@@ -5,7 +5,7 @@ from pokecoach.tools import index_turns
 
 def _log_paths() -> list[Path]:
     base = Path("logs_prueba")
-    return sorted(base.glob("battle_logs_9_feb_2026_spanish*.txt"))
+    return sorted(base.glob("battle_logs_ptcgl_spanish*.txt"))
 
 
 def test_index_turns_parses_all_sample_logs() -> None:

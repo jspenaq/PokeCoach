@@ -56,7 +56,7 @@ def evaluate_release_kpis(
     logs_dir: Path = Path("logs_prueba"),
     expected_minimums_path: Path = Path("tests/golden/expected_minimums.json"),
 ) -> ReleaseKPIResult:
-    log_paths = sorted(logs_dir.glob("battle_logs_9_feb_2026_spanish*.txt"))
+    log_paths = sorted(logs_dir.glob("battle_logs_ptcgl_spanish*.txt"))
 
     total_claims = 0
     evidence_claims = 0

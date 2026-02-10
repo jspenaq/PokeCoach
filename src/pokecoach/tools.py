@@ -9,6 +9,11 @@ from pokecoach.schemas import KeyEvent, KeyEventIndex, MatchFacts, MatchStats, T
 
 TURN_HEADER_RE = re.compile(r"^Turno de \[playerName\]\s*$")
 ACTOR_PREFIX_RE = re.compile(r"^([A-Za-z0-9_\-]+)\s")
+ACTOR_STOPLIST = {"El", "Se", "¡El", "-", "•", "Preparación", "Chequeo", "Resumen"}
+PLAYER_ACTION_VERB_RE = re.compile(
+    r"\b(?:robó|jugó|puso|unió|hizo|retiró|terminó|eligió|decidió|descartó|tomó|usó|infligió)\b",
+    re.IGNORECASE,
+)
 PLAYER_INITIAL_DRAW_RE = re.compile(r"^([A-Za-z0-9_\-]+) robó 7 cartas de la mano inicial\.$")
 PRIZE_TAKEN_RE = re.compile(r"^([A-Za-z0-9_\-]+) tomó (una|\d+) cartas? de Premio\.$")
 CONCEDE_LINE_RE = re.compile(r"(?:El rival se rindió|Te rendiste)\.", re.IGNORECASE)
@@ -18,13 +23,32 @@ KO_OWNER_RE = re.compile(r"de ([A-Za-z0-9_\-]+) quedó Fuera de Combate", re.IGN
 
 def _infer_actor(lines: list[str]) -> str | None:
     for line in lines:
-        text = line.strip()
-        if not text or text.startswith("-") or text.startswith("•"):
-            continue
-        match = ACTOR_PREFIX_RE.match(text)
-        if match:
-            return match.group(1)
+        actor = infer_actor(line)
+        if actor is not None:
+            return actor
     return None
+
+
+def infer_actor(line: str) -> str | None:
+    text = line.strip()
+    if not text:
+        return None
+
+    tokens = text.split(maxsplit=1)
+    if not tokens:
+        return None
+    if tokens[0] in ACTOR_STOPLIST:
+        return None
+
+    match = ACTOR_PREFIX_RE.match(text)
+    if not match:
+        return None
+    actor = match.group(1)
+    if actor in ACTOR_STOPLIST:
+        return None
+    if not PLAYER_ACTION_VERB_RE.search(text):
+        return None
+    return actor
 
 
 def _actor_prefix_from_text(text: str) -> str | None:
@@ -153,7 +177,7 @@ def _collect_players(log_text: str) -> list[str]:
             if player not in players:
                 players.append(player)
             continue
-        actor = _actor_prefix_from_text(text)
+        actor = infer_actor(text)
         if actor and actor not in players:
             players.append(actor)
     return players
@@ -161,7 +185,7 @@ def _collect_players(log_text: str) -> list[str]:
 
 def _infer_ko_actor(lines: list[str], idx: int, owner: str | None, players: list[str]) -> str | None:
     text = lines[idx].strip()
-    actor = _actor_prefix_from_text(text)
+    actor = infer_actor(text)
     if actor:
         return actor
 
@@ -175,7 +199,7 @@ def _infer_ko_actor(lines: list[str], idx: int, owner: str | None, players: list
         if prev_idx < 0:
             break
         prev_text = lines[prev_idx].strip()
-        prev_actor = _actor_prefix_from_text(prev_text)
+        prev_actor = infer_actor(prev_text)
         if not prev_actor or prev_actor == owner:
             continue
         if "infligió" in prev_text or "usó" in prev_text or "usando" in prev_text:
@@ -185,7 +209,7 @@ def _infer_ko_actor(lines: list[str], idx: int, owner: str | None, players: list
         prev_idx = idx - offset
         if prev_idx < 0:
             break
-        prev_actor = _actor_prefix_from_text(lines[prev_idx].strip())
+        prev_actor = infer_actor(lines[prev_idx].strip())
         if prev_actor and prev_actor != owner:
             return prev_actor
 

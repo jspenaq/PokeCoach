@@ -4,7 +4,7 @@ from pokecoach.tools import compute_basic_stats
 
 
 def test_compute_basic_stats_from_sample_log() -> None:
-    path = Path("logs_prueba/battle_logs_9_feb_2026_spanish.txt")
+    path = Path("logs_prueba/battle_logs_ptcgl_spanish.txt")
     stats = compute_basic_stats(path.read_text(encoding="utf-8"))
 
     assert stats.went_first_player == "XueDii"
