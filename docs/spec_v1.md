@@ -208,6 +208,13 @@ Guarantees:
 - Spans are non-overlapping and within log bounds.
 - If turn markers are noisy, returns best-effort spans + records ambiguity via RAW handling.
 
+PTCGL log compatibility notes (validated on `logs_prueba/`):
+- Turn headers may appear as `Turno de [playerName]` (placeholder). The parser must infer the acting player from the first concrete action line in the span.
+- Inter-turn blocks such as `Chequeo Pokémon` may appear between turns. They must be represented as either:
+  - an explicit synthetic phase span (`phase="pokemon_check"`), or
+  - a RAW side-block linked to adjacent turns.
+  They must not break turn indexing.
+
 ### 7.2 `find_key_events`
 
 Signature:
@@ -218,6 +225,7 @@ Guarantees:
 - Extracts observable events: KO, prizes, concede, supporter usage, stadium changes, attacks.
 - Preserves source `line` and `text` for each event.
 - Unknown event formats do not crash extraction.
+- Supports multiple event emissions from a single log line/span when lines are compound (e.g., attack + weakness bonus + discard + KO in one narrative block).
 
 ### 7.3 `extract_turn_summary`
 
