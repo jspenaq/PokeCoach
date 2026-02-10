@@ -9,8 +9,16 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 - ✅ Fase 2 completada (incluye hardening de eventos compuestos + golden minimum tests).
 - ✅ Fase 3 completada para MVP (report pipeline + guardrails evidence/confidence/cardinality).
 - ✅ Fase 4 completada (CLI `run_report.py` + JSON/Markdown + `--output` + `--deterministic-only` + tests + docs).
-- 🟡 Fase 5 en progreso (golden baselines + architecture contracts activos; faltan KPIs de release formales).
+- ✅ Fase 5 completada en bloque principal (golden baselines, architecture contracts, checklist y KPI checker determinista).
 - ⏳ Fase 6 pendiente (observabilidad opcional).
+- 🔄 Sprint de iteración de output en curso (post-Fase 5):
+  - PRD-002 Actor & Phase Filtering (cerrado)
+  - PRD-003 KO Attribution Lookback (cerrado)
+  - PRD-004 Claim Integrity Gate (cerrado)
+  - PRD-005 Play Bundles (cerrado)
+  - PRD-006 Turning Points by Impact Score (cerrado, pendiente refinamiento de swing neto)
+  - PRD-007 Output Language Consistency (cerrado)
+  - PRD-008 Summary Fact-Only Claims (cerrado)
 
 ## Principios no negociables
 - **Evidence or it didn’t happen**.
@@ -152,10 +160,11 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 - Golden stability: **100%** del set `tests/golden/expected_minimums.json` en verde.
 
 ## Backlog inmediato (siguiente sprint)
-1. Añadir medición automática de coverage en CI (umbral >=85%).
-2. Expandir golden tests con casos ambiguos/compuestos extra.
-3. Definir checklist de release con thresholds KPI.
-4. Evaluar Fase 6 (Langfuse/Logfire) según costo-beneficio.
+1. Corregir scoring de swing neto en turning points (delta real actor-oponente en premios por bundle).
+2. Consolidar `play_bundles` en unidades compuestas reales por turno/ventana (eliminar duplicación de micro-eventos).
+3. Mejorar evidencia de `window.raw_lines` con líneas reales reproducibles (no placeholders de ventana).
+4. Añadir medición automática de coverage en CI (umbral >=85%).
+5. Evaluar Fase 6 (Langfuse/Logfire) según costo-beneficio.
 
 ---
 
