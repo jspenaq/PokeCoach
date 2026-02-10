@@ -84,7 +84,25 @@ def find_key_events(log_text: str) -> KeyEventIndex:
 
 
 def extract_turn_summary(turn_span: TurnSpan, log_text: str) -> TurnSummary:
-    raise NotImplementedError
+    lines = log_text.splitlines()[turn_span.start_line - 1 : turn_span.end_line]
+    bullets: list[str] = []
+
+    for raw in lines:
+        text = raw.strip()
+        if "infligió" in text and "usando" in text:
+            bullets.append("Attack resolved during this turn.")
+        elif "quedó Fuera de Combate" in text:
+            bullets.append("A knockout occurred during this turn.")
+        elif "tomó" in text and "Premio" in text:
+            bullets.append("A prize card was taken.")
+        elif "jugó" in text and any(keyword in text for keyword in SUPPORTER_KEYWORDS):
+            bullets.append("A supporter was played.")
+
+    bullets = list(dict.fromkeys(bullets))[:4]
+    if not bullets:
+        bullets = ["Turn contained setup and sequencing actions."]
+
+    return TurnSummary(turn_number=turn_span.turn_number, bullets=bullets, evidence=[])
 
 
 def compute_basic_stats(log_text: str) -> MatchStats:
