@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from os import environ
 from typing import Mapping
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -37,6 +38,8 @@ class LLMReportGuidance(BaseModel):
 
 def load_runtime_config(env: Mapping[str, str] | None = None) -> PydanticAIRuntimeConfig:
     """Load OpenRouter/PydanticAI settings from environment variables."""
+    if env is None:
+        load_dotenv()
     values = environ if env is None else env
     return PydanticAIRuntimeConfig(
         openrouter_api_key=values.get("OPENROUTER_API_KEY"),
