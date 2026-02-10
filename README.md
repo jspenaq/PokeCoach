@@ -70,6 +70,32 @@ report = generate_post_game_report(log_text)
 print(report.model_dump_json(indent=2))
 ```
 
+## CLI Usage
+
+Generate report to stdout (JSON default):
+
+```bash
+uv run python run_report.py logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt
+```
+
+Generate Markdown to stdout:
+
+```bash
+uv run python run_report.py logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt --format md
+```
+
+Write output to file:
+
+```bash
+uv run python run_report.py logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt --output reports/report.json
+```
+
+Force deterministic path (skip LLM guidance):
+
+```bash
+uv run python run_report.py logs_prueba/battle_logs_9_feb_2026_spanish_con_ids_1.txt --deterministic-only
+```
+
 ## PydanticAI Runtime (OpenRouter-first)
 
 ```bash
