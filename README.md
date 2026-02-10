@@ -47,6 +47,16 @@ uv run ruff format --check .
 uv run pytest -q
 ```
 
+## CI
+
+GitHub Actions runs lint and tests on pushes and pull requests to `main` using `.github/workflows/ci.yml`.
+
+Optional badge (replace `<owner>` and `<repo>`):
+
+```md
+![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)
+```
+
 ## Quick Example
 
 ```python
