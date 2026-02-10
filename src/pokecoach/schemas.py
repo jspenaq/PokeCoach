@@ -69,9 +69,19 @@ class Mistake(BaseModel):
     evidence: EvidenceSpan
 
 
+class MatchFacts(BaseModel):
+    winner: str | None = None
+    went_first_player: str | None = None
+    turns_count: int = Field(default=0, ge=0)
+    observable_prizes_taken_by_player: dict[str, int] = Field(default_factory=dict)
+    kos_by_player: dict[str, int] = Field(default_factory=dict)
+    concede: bool = False
+
+
 class PostGameReport(BaseModel):
     summary: list[str] = Field(min_length=5, max_length=8)
     turning_points: list[TurningPoint] = Field(min_length=2, max_length=4)
     mistakes: list[Mistake] = Field(min_length=3, max_length=6)
     unknowns: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(min_length=3, max_length=5)
+    match_facts: MatchFacts = Field(default_factory=MatchFacts)

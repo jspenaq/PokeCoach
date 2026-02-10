@@ -10,7 +10,7 @@ def _log_paths() -> list[Path]:
 
 def test_index_turns_parses_all_sample_logs() -> None:
     paths = _log_paths()
-    assert len(paths) == 5
+    assert len(paths) >= 5
 
     for path in paths:
         log_text = path.read_text(encoding="utf-8")
