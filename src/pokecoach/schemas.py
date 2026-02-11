@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -102,3 +104,33 @@ class PostGameReport(BaseModel):
     next_actions: list[str] = Field(min_length=3, max_length=5)
     match_facts: MatchFacts = Field(default_factory=MatchFacts)
     play_bundles: list[PlayBundle] = Field(default_factory=list)
+
+
+class DraftReport(BaseModel):
+    summary: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+    turning_points_picks: list[str] = Field(default_factory=list)
+    mistakes_picks: list[str] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+
+
+class Violation(BaseModel):
+    code: str = Field(min_length=1)
+    severity: Literal["critical", "major", "minor"]
+    field: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    suggested_fix: str = Field(min_length=1)
+
+
+class PatchAction(BaseModel):
+    target: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    replacement_source: str | None = None
+    reason: str = Field(min_length=1)
+
+
+class AuditResult(BaseModel):
+    quality_minimum_pass: bool
+    violations: list[Violation] = Field(default_factory=list)
+    patch_plan: list[PatchAction] = Field(default_factory=list)
+    audit_summary: str = Field(min_length=1)
