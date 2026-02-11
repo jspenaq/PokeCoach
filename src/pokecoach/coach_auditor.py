@@ -10,6 +10,17 @@ from pydantic import BaseModel, Field
 from pokecoach.schemas import AuditResult, DraftReport, PatchAction, Violation
 
 
+def evaluate_quality_minimum(violations: list[Violation]) -> bool:
+    """Return pass/fail based on PRD-013 thresholds."""
+    critical_count = sum(1 for violation in violations if violation.severity == "critical")
+    major_count = sum(1 for violation in violations if violation.severity == "major")
+    if critical_count >= 1:
+        return False
+    if major_count >= 2:
+        return False
+    return True
+
+
 class CoachAuditorMetadata(BaseModel):
     audit_status: Literal["pass", "fail"]
     violations_count: int = Field(ge=0)
@@ -29,7 +40,8 @@ def run_one_iteration_coach_auditor(
     """Run Agent A draft, Agent B audit, and at most one rewrite pass."""
     initial_draft = draft_generator()
     first_audit = auditor(initial_draft)
-    if first_audit.quality_minimum_pass:
+    first_pass = evaluate_quality_minimum(first_audit.violations)
+    if first_pass:
         return CoachAuditorRunResult(
             draft_report=initial_draft,
             metadata=CoachAuditorMetadata(
@@ -41,10 +53,11 @@ def run_one_iteration_coach_auditor(
 
     rewritten_draft = rewrite_generator(initial_draft, first_audit.violations, first_audit.patch_plan)
     second_audit = auditor(rewritten_draft)
+    second_pass = evaluate_quality_minimum(second_audit.violations)
     return CoachAuditorRunResult(
         draft_report=rewritten_draft,
         metadata=CoachAuditorMetadata(
-            audit_status="pass" if second_audit.quality_minimum_pass else "fail",
+            audit_status="pass" if second_pass else "fail",
             violations_count=len(second_audit.violations),
             rewrite_used=True,
         ),

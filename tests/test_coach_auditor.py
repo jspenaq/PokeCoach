@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pokecoach.coach_auditor import run_one_iteration_coach_auditor
+from pokecoach.coach_auditor import evaluate_quality_minimum, run_one_iteration_coach_auditor
 from pokecoach.schemas import AuditResult, DraftReport, PatchAction, Violation
 
 
@@ -14,11 +14,16 @@ def _make_draft(tag: str) -> DraftReport:
     )
 
 
-def _make_violation() -> Violation:
+def _make_violation(
+    *,
+    code: str = "EVIDENCE_MISSING",
+    severity: str = "critical",
+    field: str = "summary[0]",
+) -> Violation:
     return Violation(
-        code="EVIDENCE_MISSING",
-        severity="critical",
-        field="summary[0]",
+        code=code,
+        severity=severity,
+        field=field,
         message="Claim without evidence.",
         suggested_fix="Replace with deterministic candidate.",
     )
@@ -132,5 +137,71 @@ def test_run_one_iteration_returns_rewritten_output_when_second_audit_fails() ->
     assert result.draft_report.summary == ["rewritten summary"]
     assert result.metadata.audit_status == "fail"
     assert result.metadata.violations_count == 1
+    assert result.metadata.rewrite_used is True
+    assert calls == {"draft": 1, "audit": 2, "rewrite": 1}
+
+
+def test_evaluate_quality_minimum_fails_with_one_critical() -> None:
+    assert evaluate_quality_minimum([_make_violation(severity="critical")]) is False
+
+
+def test_evaluate_quality_minimum_fails_with_two_majors() -> None:
+    violations = [
+        _make_violation(code="FORMAT_CARDINALITY_SUMMARY", severity="major", field="summary"),
+        _make_violation(code="FORMAT_CARDINALITY_ACTIONS", severity="major", field="next_actions"),
+    ]
+    assert evaluate_quality_minimum(violations) is False
+
+
+def test_evaluate_quality_minimum_passes_with_one_major_only() -> None:
+    violations = [_make_violation(code="CANDIDATE_DRIFT", severity="major", field="turning_points_picks")]
+    assert evaluate_quality_minimum(violations) is True
+
+
+def test_evaluate_quality_minimum_passes_with_only_minors() -> None:
+    violations = [
+        _make_violation(code="STYLE_VERBOSE", severity="minor"),
+        _make_violation(code="STYLE_REDUNDANT", severity="minor"),
+    ]
+    assert evaluate_quality_minimum(violations) is True
+
+
+def test_orchestration_normalizes_inconsistent_auditor_boolean_with_policy() -> None:
+    calls = {"draft": 0, "audit": 0, "rewrite": 0}
+
+    def draft_generator() -> DraftReport:
+        calls["draft"] += 1
+        return _make_draft("initial")
+
+    def auditor(_draft: DraftReport) -> AuditResult:
+        calls["audit"] += 1
+        if calls["audit"] == 1:
+            return AuditResult(
+                quality_minimum_pass=True,
+                violations=[_make_violation(severity="critical")],
+                patch_plan=[],
+                audit_summary="Inconsistent: critical but pass=true.",
+            )
+        return AuditResult(
+            quality_minimum_pass=True,
+            violations=[
+                _make_violation(code="FORMAT_CARDINALITY_SUMMARY", severity="major", field="summary"),
+                _make_violation(code="FORMAT_CARDINALITY_ACTIONS", severity="major", field="next_actions"),
+            ],
+            patch_plan=[],
+            audit_summary="Inconsistent: two majors but pass=true.",
+        )
+
+    def rewrite_generator(
+        _draft: DraftReport, _violations: list[Violation], _patch_plan: list[PatchAction]
+    ) -> DraftReport:
+        calls["rewrite"] += 1
+        return _make_draft("rewritten")
+
+    result = run_one_iteration_coach_auditor(draft_generator, auditor, rewrite_generator)
+
+    assert result.draft_report.summary == ["rewritten summary"]
+    assert result.metadata.audit_status == "fail"
+    assert result.metadata.violations_count == 2
     assert result.metadata.rewrite_used is True
     assert calls == {"draft": 1, "audit": 2, "rewrite": 1}

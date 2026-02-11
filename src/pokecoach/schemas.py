@@ -114,9 +114,52 @@ class DraftReport(BaseModel):
     unknowns: list[str] = Field(default_factory=list)
 
 
+ViolationSeverity = Literal["critical", "major", "minor"]
+
+VIOLATION_SEVERITIES: tuple[ViolationSeverity, ...] = ("critical", "major", "minor")
+
+VIOLATION_CODES_CRITICAL = (
+    "HALLUCINATED_CARD",
+    "HALLUCINATED_ACTION",
+    "EVIDENCE_MISSING",
+    "LANGUAGE_MISMATCH",
+)
+VIOLATION_CODES_MAJOR = (
+    "FORMAT_CARDINALITY_SUMMARY",
+    "FORMAT_CARDINALITY_ACTIONS",
+    "EVIDENCE_SPAN_INVALID",
+    "CANDIDATE_DRIFT",
+)
+VIOLATION_CODES_MINOR = (
+    "STYLE_VERBOSE",
+    "STYLE_REDUNDANT",
+    "WORDING_AMBIGUOUS",
+)
+
+ViolationCode = Literal[
+    "HALLUCINATED_CARD",
+    "HALLUCINATED_ACTION",
+    "EVIDENCE_MISSING",
+    "LANGUAGE_MISMATCH",
+    "FORMAT_CARDINALITY_SUMMARY",
+    "FORMAT_CARDINALITY_ACTIONS",
+    "EVIDENCE_SPAN_INVALID",
+    "CANDIDATE_DRIFT",
+    "STYLE_VERBOSE",
+    "STYLE_REDUNDANT",
+    "WORDING_AMBIGUOUS",
+]
+
+VIOLATION_CODES: tuple[ViolationCode, ...] = (
+    *VIOLATION_CODES_CRITICAL,
+    *VIOLATION_CODES_MAJOR,
+    *VIOLATION_CODES_MINOR,
+)
+
+
 class Violation(BaseModel):
-    code: str = Field(min_length=1)
-    severity: Literal["critical", "major", "minor"]
+    code: ViolationCode
+    severity: ViolationSeverity
     field: str = Field(min_length=1)
     message: str = Field(min_length=1)
     suggested_fix: str = Field(min_length=1)
