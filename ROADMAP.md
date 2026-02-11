@@ -165,6 +165,10 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 3. Mejorar evidencia de `window.raw_lines` con líneas reales reproducibles (no placeholders de ventana).
 4. Añadir medición automática de coverage en CI (umbral >=85%).
 5. Evaluar Fase 6 (Langfuse/Logfire) según costo-beneficio.
+6. PRD-012: Contrato Agentic Coach + Auditor (quality minimum + 1 iteración máxima).
+7. PRD-013: Taxonomía de violaciones del Auditor (severidades, thresholds y patch_plan).
+8. PRD-014: Rollout y métricas (latencia/costo/calidad por modelo).
+9. Prompt 002 del Auditor Red Team con pruebas adversariales.
 
 ---
 
