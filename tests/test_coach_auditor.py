@@ -205,3 +205,124 @@ def test_orchestration_normalizes_inconsistent_auditor_boolean_with_policy() -> 
     assert result.metadata.violations_count == 2
     assert result.metadata.rewrite_used is True
     assert calls == {"draft": 1, "audit": 2, "rewrite": 1}
+
+
+def test_event_sequence_when_passes_on_first_audit() -> None:
+    events: list[dict[str, object]] = []
+
+    def draft_generator() -> DraftReport:
+        return _make_draft("initial")
+
+    def auditor(_draft: DraftReport) -> AuditResult:
+        return AuditResult(
+            quality_minimum_pass=True,
+            violations=[],
+            patch_plan=[],
+            audit_summary="Pass.",
+        )
+
+    def rewrite_generator(
+        _draft: DraftReport, _violations: list[Violation], _patch_plan: list[PatchAction]
+    ) -> DraftReport:
+        raise AssertionError("rewrite should not be called")
+
+    result = run_one_iteration_coach_auditor(
+        draft_generator,
+        auditor,
+        rewrite_generator,
+        event_callback=events.append,
+    )
+
+    assert [event["event_name"] for event in events] == [
+        "coach_run_started",
+        "coach_run_completed",
+        "audit_run_completed",
+        "report_returned",
+    ]
+    assert result.metadata.events_count == 4
+    assert result.metadata.audit_pass_first_try is True
+
+
+def test_event_sequence_when_rewrite_is_used() -> None:
+    events: list[dict[str, object]] = []
+    calls = {"audit": 0}
+
+    def draft_generator() -> DraftReport:
+        return _make_draft("initial")
+
+    def auditor(_draft: DraftReport) -> AuditResult:
+        calls["audit"] += 1
+        if calls["audit"] == 1:
+            return AuditResult(
+                quality_minimum_pass=False,
+                violations=[_make_violation(severity="critical")],
+                patch_plan=[],
+                audit_summary="Fail first pass.",
+            )
+        return AuditResult(
+            quality_minimum_pass=True,
+            violations=[],
+            patch_plan=[],
+            audit_summary="Pass after rewrite.",
+        )
+
+    def rewrite_generator(
+        _draft: DraftReport, _violations: list[Violation], _patch_plan: list[PatchAction]
+    ) -> DraftReport:
+        return _make_draft("rewritten")
+
+    result = run_one_iteration_coach_auditor(
+        draft_generator,
+        auditor,
+        rewrite_generator,
+        event_callback=events.append,
+    )
+
+    assert [event["event_name"] for event in events] == [
+        "coach_run_started",
+        "coach_run_completed",
+        "audit_run_completed",
+        "audit_failed_quality_minimum",
+        "rewrite_started",
+        "rewrite_completed",
+        "audit_run_completed",
+        "report_returned",
+    ]
+    assert result.metadata.events_count == 8
+    assert result.metadata.audit_pass_first_try is False
+
+
+def test_callback_payloads_keep_expected_order_and_minimum_fields() -> None:
+    events: list[dict[str, object]] = []
+
+    def draft_generator() -> DraftReport:
+        return _make_draft("initial")
+
+    def auditor(_draft: DraftReport) -> AuditResult:
+        return AuditResult(
+            quality_minimum_pass=False,
+            violations=[_make_violation(severity="critical")],
+            patch_plan=[],
+            audit_summary="Fail.",
+        )
+
+    def rewrite_generator(
+        _draft: DraftReport, _violations: list[Violation], _patch_plan: list[PatchAction]
+    ) -> DraftReport:
+        return _make_draft("rewritten")
+
+    run_one_iteration_coach_auditor(
+        draft_generator,
+        auditor,
+        rewrite_generator,
+        event_callback=events.append,
+    )
+
+    assert events[0]["event_name"] == "coach_run_started"
+    assert events[-1]["event_name"] == "report_returned"
+    for payload in events:
+        assert "event_name" in payload
+        assert "stage" in payload
+        assert "violations_count" in payload
+        assert "quality_minimum_pass" in payload
+        assert "rewrite_used" in payload

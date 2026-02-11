@@ -54,8 +54,11 @@ Desplegar Coach+Auditor de forma incremental, midiendo calidad, latencia y costo
 - `rewrite_completed`
 - `report_returned`
 
-Campos mínimos por evento:
-- `trace_id`, `run_id`, `model`, `stage`, `latency_ms`, `token_usage`, `violations_count`, `quality_minimum_pass`.
+Campos mínimos por evento (implementación actual):
+- `event_name`, `stage`, `violations_count`, `quality_minimum_pass`, `rewrite_used`.
+
+Campos recomendados para siguiente iteración:
+- `trace_id`, `run_id`, `model`, `latency_ms`, `token_usage`.
 
 ## Criterios de éxito de rollout
 - Disminución sostenida de violaciones críticas.
