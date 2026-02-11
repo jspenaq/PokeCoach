@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from os import environ
 
+from pokecoach.coach_auditor import run_one_iteration_coach_auditor
 from pokecoach.constants import (
     DEFAULT_NEXT_ACTIONS,
     DEFAULT_UNKNOWNS,
@@ -31,7 +33,16 @@ from pokecoach.constants import (
 from pokecoach.factories import build_evidence_span
 from pokecoach.guardrails import apply_report_guardrails
 from pokecoach.llm_provider import maybe_generate_guidance
-from pokecoach.schemas import EvidenceSpan, KeyEvent, MatchFacts, Mistake, PostGameReport, TurningPoint
+from pokecoach.schemas import (
+    AuditResult,
+    DraftReport,
+    EvidenceSpan,
+    KeyEvent,
+    MatchFacts,
+    Mistake,
+    PostGameReport,
+    TurningPoint,
+)
 from pokecoach.summary_integrity import apply_summary_claim_integrity
 from pokecoach.tools import extract_match_facts, extract_play_bundles, find_key_events, index_turns
 
@@ -399,6 +410,121 @@ def _build_mistakes(log_text: str, spanish_mode: bool) -> list[Mistake]:
     return mistakes[:MISTAKES_MAX_ITEMS]
 
 
+def _env_flag(name: str) -> bool:
+    return environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _run_agentic_coach_auditor(
+    *,
+    summary: list[str],
+    next_actions: list[str],
+    fallback_summary: list[str],
+    spanish_mode: bool,
+) -> tuple[list[str], list[str], dict[str, object] | None]:
+    if not _env_flag("POKECOACH_AGENTIC_COACH_AUDITOR"):
+        return summary, next_actions, None
+
+    events: list[dict[str, object]] = []
+
+    def draft_generator() -> DraftReport:
+        return DraftReport(summary=list(summary), next_actions=list(next_actions), unknowns=[])
+
+    def auditor(draft: DraftReport) -> AuditResult:
+        violations = []
+        if len(draft.summary) < 5 or len(draft.summary) > SUMMARY_MAX_ITEMS:
+            violations.append(
+                {
+                    "code": "FORMAT_CARDINALITY_SUMMARY",
+                    "severity": "major",
+                    "field": "summary",
+                    "message": "Summary cardinality out of range.",
+                    "suggested_fix": "Adjust summary to 5-8 bullets.",
+                }
+            )
+        if len(draft.next_actions) < 3 or len(draft.next_actions) > len(SPANISH_DEFAULT_NEXT_ACTIONS):
+            violations.append(
+                {
+                    "code": "FORMAT_CARDINALITY_ACTIONS",
+                    "severity": "major",
+                    "field": "next_actions",
+                    "message": "Next actions cardinality out of range.",
+                    "suggested_fix": "Adjust next_actions to 3-5 bullets.",
+                }
+            )
+        if spanish_mode:
+            if any(not _is_spanish_consistent_text(item) for item in draft.summary + draft.next_actions):
+                violations.append(
+                    {
+                        "code": "LANGUAGE_MISMATCH",
+                        "severity": "critical",
+                        "field": "summary|next_actions",
+                        "message": "Language mismatch with Spanish mode.",
+                        "suggested_fix": "Rewrite bullets in Spanish.",
+                    }
+                )
+        return AuditResult(
+            quality_minimum_pass=not violations,
+            violations=violations,
+            patch_plan=[],
+            audit_summary="Auto-audit pass." if not violations else "Auto-audit fail.",
+        )
+
+    def rewrite_generator(
+        draft: DraftReport,
+        _violations,
+        _patch_plan,
+    ) -> DraftReport:
+        rewritten_summary = list(draft.summary)
+        while len(rewritten_summary) < 5:
+            for item in fallback_summary:
+                if len(rewritten_summary) >= 5:
+                    break
+                if item not in rewritten_summary:
+                    rewritten_summary.append(item)
+            if not fallback_summary:
+                break
+        rewritten_summary = rewritten_summary[:SUMMARY_MAX_ITEMS]
+
+        rewritten_actions = list(draft.next_actions)
+        defaults = list(SPANISH_DEFAULT_NEXT_ACTIONS if spanish_mode else DEFAULT_NEXT_ACTIONS)
+        while len(rewritten_actions) < 3:
+            for item in defaults:
+                if len(rewritten_actions) >= 3:
+                    break
+                if item not in rewritten_actions:
+                    rewritten_actions.append(item)
+            if not defaults:
+                break
+        rewritten_actions = rewritten_actions[: len(defaults)]
+
+        if spanish_mode:
+            rewritten_summary = _normalize_spanish_list(
+                rewritten_summary,
+                fallback_summary,
+                min_items=5,
+                max_items=SUMMARY_MAX_ITEMS,
+            )
+            rewritten_actions = _normalize_spanish_list(
+                rewritten_actions,
+                defaults,
+                min_items=3,
+                max_items=len(defaults),
+            )
+
+        return DraftReport(summary=rewritten_summary, next_actions=rewritten_actions, unknowns=[])
+
+    result = run_one_iteration_coach_auditor(
+        draft_generator,
+        auditor,
+        rewrite_generator,
+        event_callback=events.append,
+    )
+    telemetry: dict[str, object] = result.metadata.model_dump()
+    if _env_flag("POKECOACH_INCLUDE_AGENTIC_TELEMETRY"):
+        telemetry["events"] = events
+    return result.draft_report.summary, result.draft_report.next_actions, telemetry
+
+
 def generate_post_game_report(log_text: str) -> PostGameReport:
     spanish_mode = _is_spanish_log(log_text)
     turns = index_turns(log_text)
@@ -478,6 +604,13 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
             )
         mistakes = normalized_mistakes
 
+    summary, next_actions, agentic_telemetry = _run_agentic_coach_auditor(
+        summary=summary,
+        next_actions=next_actions,
+        fallback_summary=fallback_summary,
+        spanish_mode=spanish_mode,
+    )
+
     return PostGameReport(
         summary=summary[:SUMMARY_MAX_ITEMS],
         turning_points=turning_points,
@@ -486,4 +619,5 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
         next_actions=next_actions,
         match_facts=match_facts,
         play_bundles=play_bundles,
+        agentic_telemetry=agentic_telemetry,
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -104,6 +104,7 @@ class PostGameReport(BaseModel):
     next_actions: list[str] = Field(min_length=3, max_length=5)
     match_facts: MatchFacts = Field(default_factory=MatchFacts)
     play_bundles: list[PlayBundle] = Field(default_factory=list)
+    agentic_telemetry: dict[str, Any] | None = None
 
 
 class DraftReport(BaseModel):

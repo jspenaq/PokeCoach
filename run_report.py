@@ -42,21 +42,42 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bypass LLM guidance and keep deterministic fallback behavior only.",
     )
+    parser.add_argument(
+        "--agentic-telemetry",
+        action="store_true",
+        help="Enable Coach+Auditor telemetry and include it in JSON output.",
+    )
     return parser
 
 
 @contextmanager
-def _temporarily_disable_llm(enabled: bool):
-    if not enabled:
-        yield
-        return
+def _temporary_runtime_flags(*, deterministic_only: bool, agentic_telemetry: bool):
+    api_key = None
+    prev_agentic = os.environ.get("POKECOACH_AGENTIC_COACH_AUDITOR")
+    prev_include_telemetry = os.environ.get("POKECOACH_INCLUDE_AGENTIC_TELEMETRY")
 
-    api_key = os.environ.pop("OPENROUTER_API_KEY", None)
+    if deterministic_only:
+        api_key = os.environ.pop("OPENROUTER_API_KEY", None)
+
+    if agentic_telemetry:
+        os.environ["POKECOACH_AGENTIC_COACH_AUDITOR"] = "1"
+        os.environ["POKECOACH_INCLUDE_AGENTIC_TELEMETRY"] = "1"
+
     try:
         yield
     finally:
         if api_key is not None:
             os.environ["OPENROUTER_API_KEY"] = api_key
+
+        if prev_agentic is None:
+            os.environ.pop("POKECOACH_AGENTIC_COACH_AUDITOR", None)
+        else:
+            os.environ["POKECOACH_AGENTIC_COACH_AUDITOR"] = prev_agentic
+
+        if prev_include_telemetry is None:
+            os.environ.pop("POKECOACH_INCLUDE_AGENTIC_TELEMETRY", None)
+        else:
+            os.environ["POKECOACH_INCLUDE_AGENTIC_TELEMETRY"] = prev_include_telemetry
 
 
 def _read_log_text(log_path: str) -> str:
@@ -153,7 +174,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         log_text = _read_log_text(args.log_path)
-        with _temporarily_disable_llm(args.deterministic_only):
+        with _temporary_runtime_flags(
+            deterministic_only=args.deterministic_only,
+            agentic_telemetry=args.agentic_telemetry,
+        ):
             report = generate_post_game_report(log_text)
         rendered = _serialize_report(report, args.output_format)
         _write_output(rendered, args.output)

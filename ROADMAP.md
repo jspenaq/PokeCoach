@@ -169,6 +169,8 @@ Construir un coach post-game para Pokémon TCG Live que entregue reportes accion
 7. PRD-013: Taxonomía de violaciones del Auditor (severidades, thresholds y patch_plan).
 8. PRD-014: Rollout y métricas (latencia/costo/calidad por modelo).
 9. Prompt 002 del Auditor Red Team con pruebas adversariales.
+10. PRD-015: integración de Coach+Auditor con `llm_provider` real y flag de telemetría.
+11. TODO: definir política de fallback de Agent A para errores técnicos (404/timeout/conexión).
 
 ---
 
