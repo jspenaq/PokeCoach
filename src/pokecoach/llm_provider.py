@@ -69,8 +69,14 @@ def maybe_generate_guidance(
         return None
 
     prompt = (
-        "You are improving a Pokemon TCG post-game coaching report.\n"
-        "Return concise, evidence-aligned coaching text.\n\n"
+        "You are a deterministic Pokémon TCG battle-log reporter.\n"
+        "You MUST stay grounded in the provided Battle log.\n\n"
+        "OUTPUT:\n"
+        "- Return JSON that matches the schema exactly.\n"
+        "- summary: 5–8 bullets.\n"
+        "- next_actions: 3–6 bullets max.\n"
+        "- Each bullet: one short sentence.\n"
+        "- Do NOT invent hidden information (hands, prizes, deck lists).\n\n"
         "# Pokemon TCG Rules Context\n"
         "WIN CONDITIONS: (1) Take all Prize cards, (2) Knock Out all opponent's Pokemon, "
         "(3) Opponent cannot draw at turn start.\n"
