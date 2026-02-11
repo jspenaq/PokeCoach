@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 
 from pokecoach import report as report_module
-from pokecoach.llm_provider import LLMReportGuidance
+from pokecoach.llm_provider import LLMReportGuidance, PydanticAIRuntimeConfig
 from pokecoach.report import generate_post_game_report
-from pokecoach.schemas import EvidenceSpan, Mistake, PlayBundle, PlayBundleEvent, TurningPoint
+from pokecoach.schemas import AuditResult, DraftReport, EvidenceSpan, Mistake, PlayBundle, PlayBundleEvent, TurningPoint
 from pokecoach.tools import extract_play_bundles, extract_turn_summary, index_turns
 
 ENGLISH_MARKERS_RE = re.compile(
@@ -379,3 +379,167 @@ def test_summary_for_log7_omits_interpretive_spin(monkeypatch) -> None:
     assert "presión" not in combined
     assert "ritmo" not in combined
     assert "momentum" not in combined
+
+
+def test_agentic_first_pass_includes_raw_outputs(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt").read_text(encoding="utf-8")
+    monkeypatch.setenv("POKECOACH_AGENTIC_COACH_AUDITOR", "1")
+    monkeypatch.setenv("POKECOACH_INCLUDE_AGENTIC_TELEMETRY", "1")
+
+    monkeypatch.setattr(
+        report_module,
+        "load_runtime_config",
+        lambda: PydanticAIRuntimeConfig(
+            openrouter_api_key="k",
+            openrouter_base_url="https://openrouter.ai/api/v1",
+            model="baseline/model",
+        ),
+    )
+    monkeypatch.setattr(
+        report_module,
+        "maybe_generate_guidance_with_raw",
+        lambda **_kwargs: (
+            LLMReportGuidance(
+                summary=[f"s{i}" for i in range(1, 6)],
+                next_actions=["a1", "a2", "a3"],
+            ),
+            '{"summary":["s1"],"next_actions":["a1"]}',
+        ),
+    )
+    monkeypatch.setattr(
+        report_module,
+        "maybe_generate_audit_result_with_raw",
+        lambda **_kwargs: (
+            AuditResult(quality_minimum_pass=True, violations=[], patch_plan=[], audit_summary="ok"),
+            '{"quality_minimum_pass":true,"violations":[]}',
+        ),
+    )
+
+    report = generate_post_game_report(log_text)
+
+    assert report.agentic_telemetry is not None
+    assert report.agentic_telemetry["agent_a_raw_output"] is not None
+    assert report.agentic_telemetry["agent_b_raw_output_first"] is not None
+
+
+def test_agentic_rewrite_path_includes_second_auditor_raw_output(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt").read_text(encoding="utf-8")
+    monkeypatch.setenv("POKECOACH_AGENTIC_COACH_AUDITOR", "1")
+    monkeypatch.setenv("POKECOACH_INCLUDE_AGENTIC_TELEMETRY", "1")
+
+    monkeypatch.setattr(
+        report_module,
+        "load_runtime_config",
+        lambda: PydanticAIRuntimeConfig(
+            openrouter_api_key="k",
+            openrouter_base_url="https://openrouter.ai/api/v1",
+            model="baseline/model",
+        ),
+    )
+    monkeypatch.setattr(
+        report_module,
+        "maybe_generate_guidance_with_raw",
+        lambda **_kwargs: (
+            LLMReportGuidance(
+                summary=[f"s{i}" for i in range(1, 6)],
+                next_actions=["a1", "a2", "a3"],
+            ),
+            '{"summary":["s1","s2","s3","s4","s5"],"next_actions":["a1","a2","a3"]}',
+        ),
+    )
+
+    calls = {"n": 0}
+
+    def fake_auditor(**_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return (
+                AuditResult(
+                    quality_minimum_pass=False,
+                    violations=[
+                        {
+                            "code": "FORMAT_CARDINALITY_SUMMARY",
+                            "severity": "major",
+                            "field": "summary",
+                            "message": "bad",
+                            "suggested_fix": "fix",
+                        },
+                        {
+                            "code": "FORMAT_CARDINALITY_ACTIONS",
+                            "severity": "major",
+                            "field": "next_actions",
+                            "message": "bad",
+                            "suggested_fix": "fix",
+                        },
+                    ],
+                    patch_plan=[],
+                    audit_summary="fail",
+                ),
+                "first-audit-raw",
+            )
+        return (
+            AuditResult(quality_minimum_pass=True, violations=[], patch_plan=[], audit_summary="ok"),
+            "second-audit-raw",
+        )
+
+    monkeypatch.setattr(report_module, "maybe_generate_audit_result_with_raw", fake_auditor)
+    monkeypatch.setattr(
+        report_module,
+        "run_openrouter_structured_json",
+        lambda **_kwargs: (
+            DraftReport(
+                summary=[f"s{i}" for i in range(1, 6)],
+                next_actions=["a1", "a2", "a3"],
+                unknowns=[],
+            ),
+            "agent-a-rewrite-raw",
+        ),
+    )
+
+    report = generate_post_game_report(log_text)
+
+    assert report.agentic_telemetry is not None
+    assert report.agentic_telemetry["agent_b_raw_output_first"] == "first-audit-raw"
+    assert report.agentic_telemetry["agent_b_raw_output_second"] == "second-audit-raw"
+
+
+def test_agentic_uses_model_env_vars(monkeypatch) -> None:
+    log_text = Path("logs_prueba/battle_logs_ptcgl_spanish_con_ids_1.txt").read_text(encoding="utf-8")
+    monkeypatch.setenv("POKECOACH_AGENTIC_COACH_AUDITOR", "1")
+    monkeypatch.setenv("POKECOACH_INCLUDE_AGENTIC_TELEMETRY", "1")
+    monkeypatch.setenv("POKECOACH_AGENT_A_MODEL", "google/gemini-3-flash-preview")
+    monkeypatch.setenv("POKECOACH_AGENT_B_MODEL", "mistralai/mistral-large-2512")
+
+    monkeypatch.setattr(
+        report_module,
+        "load_runtime_config",
+        lambda: PydanticAIRuntimeConfig(
+            openrouter_api_key="k",
+            openrouter_base_url="https://openrouter.ai/api/v1",
+            model="baseline/model",
+        ),
+    )
+
+    captured = {"a": None, "b": None}
+
+    def fake_guidance_with_raw(**kwargs):
+        captured["a"] = kwargs["config"].model
+        return (
+            LLMReportGuidance(summary=[f"s{i}" for i in range(1, 6)], next_actions=["a1", "a2", "a3"]),
+            "a-raw",
+        )
+
+    def fake_audit_with_raw(**kwargs):
+        captured["b"] = kwargs["config"].model
+        return (AuditResult(quality_minimum_pass=True, violations=[], patch_plan=[], audit_summary="ok"), "b-raw")
+
+    monkeypatch.setattr(report_module, "maybe_generate_guidance_with_raw", fake_guidance_with_raw)
+    monkeypatch.setattr(report_module, "maybe_generate_audit_result_with_raw", fake_audit_with_raw)
+
+    report = generate_post_game_report(log_text)
+
+    assert captured["a"] == "google/gemini-3-flash-preview"
+    assert captured["b"] == "mistralai/mistral-large-2512"
+    assert report.agentic_telemetry is not None
+    assert report.agentic_telemetry["agent_a_model"] == "google/gemini-3-flash-preview"
+    assert report.agentic_telemetry["agent_b_model"] == "mistralai/mistral-large-2512"

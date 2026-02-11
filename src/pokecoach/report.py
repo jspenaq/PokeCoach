@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from os import environ
 
@@ -32,7 +33,14 @@ from pokecoach.constants import (
 )
 from pokecoach.factories import build_evidence_span
 from pokecoach.guardrails import apply_report_guardrails
-from pokecoach.llm_provider import maybe_generate_guidance
+from pokecoach.llm_provider import (
+    PydanticAIRuntimeConfig,
+    load_runtime_config,
+    maybe_generate_audit_result_with_raw,
+    maybe_generate_guidance,
+    maybe_generate_guidance_with_raw,
+    run_openrouter_structured_json,
+)
 from pokecoach.schemas import (
     AuditResult,
     DraftReport,
@@ -40,8 +48,10 @@ from pokecoach.schemas import (
     KeyEvent,
     MatchFacts,
     Mistake,
+    PatchAction,
     PostGameReport,
     TurningPoint,
+    Violation,
 )
 from pokecoach.summary_integrity import apply_summary_claim_integrity
 from pokecoach.tools import extract_match_facts, extract_play_bundles, find_key_events, index_turns
@@ -416,6 +426,7 @@ def _env_flag(name: str) -> bool:
 
 def _run_agentic_coach_auditor(
     *,
+    log_text: str,
     summary: list[str],
     next_actions: list[str],
     fallback_summary: list[str],
@@ -425,11 +436,28 @@ def _run_agentic_coach_auditor(
         return summary, next_actions, None
 
     events: list[dict[str, object]] = []
+    include_telemetry = _env_flag("POKECOACH_INCLUDE_AGENTIC_TELEMETRY")
+    raw_outputs: dict[str, str | None] = {
+        "agent_a_raw_output": None,
+        "agent_b_raw_output_first": None,
+        "agent_b_raw_output_second": None,
+    }
 
-    def draft_generator() -> DraftReport:
-        return DraftReport(summary=list(summary), next_actions=list(next_actions), unknowns=[])
+    runtime = load_runtime_config()
+    agent_a_model = environ.get("POKECOACH_AGENT_A_MODEL", "").strip() or runtime.model
+    agent_b_model = environ.get("POKECOACH_AGENT_B_MODEL", "").strip() or runtime.model
+    agent_a_config = PydanticAIRuntimeConfig(
+        openrouter_api_key=runtime.openrouter_api_key,
+        openrouter_base_url=runtime.openrouter_base_url,
+        model=agent_a_model,
+    )
+    agent_b_config = PydanticAIRuntimeConfig(
+        openrouter_api_key=runtime.openrouter_api_key,
+        openrouter_base_url=runtime.openrouter_base_url,
+        model=agent_b_model,
+    )
 
-    def auditor(draft: DraftReport) -> AuditResult:
+    def fallback_auditor(draft: DraftReport) -> AuditResult:
         violations = []
         if len(draft.summary) < 5 or len(draft.summary) > SUMMARY_MAX_ITEMS:
             violations.append(
@@ -451,17 +479,16 @@ def _run_agentic_coach_auditor(
                     "suggested_fix": "Adjust next_actions to 3-5 bullets.",
                 }
             )
-        if spanish_mode:
-            if any(not _is_spanish_consistent_text(item) for item in draft.summary + draft.next_actions):
-                violations.append(
-                    {
-                        "code": "LANGUAGE_MISMATCH",
-                        "severity": "critical",
-                        "field": "summary|next_actions",
-                        "message": "Language mismatch with Spanish mode.",
-                        "suggested_fix": "Rewrite bullets in Spanish.",
-                    }
-                )
+        if spanish_mode and any(not _is_spanish_consistent_text(item) for item in draft.summary + draft.next_actions):
+            violations.append(
+                {
+                    "code": "LANGUAGE_MISMATCH",
+                    "severity": "critical",
+                    "field": "summary|next_actions",
+                    "message": "Language mismatch with Spanish mode.",
+                    "suggested_fix": "Rewrite bullets in Spanish.",
+                }
+            )
         return AuditResult(
             quality_minimum_pass=not violations,
             violations=violations,
@@ -469,11 +496,64 @@ def _run_agentic_coach_auditor(
             audit_summary="Auto-audit pass." if not violations else "Auto-audit fail.",
         )
 
+    audit_call_count = 0
+
+    def draft_generator() -> DraftReport:
+        guidance, raw = maybe_generate_guidance_with_raw(
+            log_text=log_text,
+            fallback_summary=fallback_summary,
+            fallback_next_actions=next_actions,
+            spanish_mode=spanish_mode,
+            config=agent_a_config,
+        )
+        raw_outputs["agent_a_raw_output"] = raw
+        if guidance is None:
+            return DraftReport(summary=list(summary), next_actions=list(next_actions), unknowns=[])
+        return DraftReport(summary=list(guidance.summary), next_actions=list(guidance.next_actions), unknowns=[])
+
+    def auditor(draft: DraftReport) -> AuditResult:
+        nonlocal audit_call_count
+        audit_call_count += 1
+        audit_result, raw = maybe_generate_audit_result_with_raw(
+            log_text=log_text,
+            draft=draft,
+            spanish_mode=spanish_mode,
+            config=agent_b_config,
+        )
+        if audit_call_count == 1:
+            raw_outputs["agent_b_raw_output_first"] = raw
+        else:
+            raw_outputs["agent_b_raw_output_second"] = raw
+        if audit_result is None:
+            return fallback_auditor(draft)
+        return audit_result
+
     def rewrite_generator(
         draft: DraftReport,
-        _violations,
-        _patch_plan,
+        violations: list[Violation],
+        patch_plan: list[PatchAction],
     ) -> DraftReport:
+        fallback_actions = SPANISH_DEFAULT_NEXT_ACTIONS if spanish_mode else DEFAULT_NEXT_ACTIONS
+        rewrite_prompt = (
+            "You are Agent A (coach) rewriting DraftReport after auditor feedback.\n"
+            "Apply patch_plan and resolve violations while preserving factual grounding in the battle log.\n"
+            "Return JSON matching DraftReport exactly.\n\n"
+            f"fallback_summary={json.dumps(fallback_summary, ensure_ascii=False)}\n"
+            f"fallback_next_actions={json.dumps(fallback_actions, ensure_ascii=False)}\n"
+            f"draft_report={draft.model_dump_json()}\n"
+            f"violations={json.dumps([item.model_dump(mode='json') for item in violations], ensure_ascii=False)}\n"
+            f"patch_plan={json.dumps([item.model_dump(mode='json') for item in patch_plan], ensure_ascii=False)}\n"
+            f"battle_log={json.dumps(log_text, ensure_ascii=False)}"
+        )
+        rewritten_draft, _rewritten_raw = run_openrouter_structured_json(
+            prompt=rewrite_prompt,
+            output_type=DraftReport,
+            model_name=agent_a_config.model,
+            config=agent_a_config,
+        )
+        if rewritten_draft is not None:
+            return rewritten_draft
+
         rewritten_summary = list(draft.summary)
         while len(rewritten_summary) < 5:
             for item in fallback_summary:
@@ -520,7 +600,10 @@ def _run_agentic_coach_auditor(
         event_callback=events.append,
     )
     telemetry: dict[str, object] = result.metadata.model_dump()
-    if _env_flag("POKECOACH_INCLUDE_AGENTIC_TELEMETRY"):
+    if include_telemetry:
+        telemetry["agent_a_model"] = agent_a_config.model
+        telemetry["agent_b_model"] = agent_b_config.model
+        telemetry.update(raw_outputs)
         telemetry["events"] = events
     return result.draft_report.summary, result.draft_report.next_actions, telemetry
 
@@ -550,14 +633,15 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
         event_indexer=find_key_events,
     )
 
-    llm_guidance = maybe_generate_guidance(
-        log_text=log_text,
-        fallback_summary=fallback_summary,
-        fallback_next_actions=next_actions,
-    )
-    if llm_guidance is not None:
-        summary = llm_guidance.summary
-        next_actions = llm_guidance.next_actions
+    if not _env_flag("POKECOACH_AGENTIC_COACH_AUDITOR"):
+        llm_guidance = maybe_generate_guidance(
+            log_text=log_text,
+            fallback_summary=fallback_summary,
+            fallback_next_actions=next_actions,
+        )
+        if llm_guidance is not None:
+            summary = llm_guidance.summary
+            next_actions = llm_guidance.next_actions
     summary, unknowns = apply_summary_claim_integrity(
         summary=summary[:SUMMARY_MAX_ITEMS],
         unknowns=unknowns,
@@ -605,6 +689,7 @@ def generate_post_game_report(log_text: str) -> PostGameReport:
         mistakes = normalized_mistakes
 
     summary, next_actions, agentic_telemetry = _run_agentic_coach_auditor(
+        log_text=log_text,
         summary=summary,
         next_actions=next_actions,
         fallback_summary=fallback_summary,
